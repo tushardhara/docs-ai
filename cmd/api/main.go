@@ -90,7 +90,24 @@ func main() {
 	var searchClient service.Search
 
 	// Initialize embedder for semantic search (used by pgvector provider)
-	embedder := embedding.NewOpenAIEmbedder(openaiKey, os.Getenv("EMBEDDING_MODEL"))
+	embProvider := os.Getenv("EMBEDDING_PROVIDER")
+	if embProvider == "" {
+		embProvider = "openai"
+	}
+	var embedder embedding.Embedder
+	switch embProvider {
+	case "openai":
+		embedder = embedding.NewOpenAIEmbedder(openaiKey, os.Getenv("EMBEDDING_MODEL"))
+	case "google":
+		embedder = embedding.NewGoogleEmbedder(os.Getenv("GOOGLE_API_KEY"), os.Getenv("EMBEDDING_MODEL"))
+	case "http":
+		embedder = embedding.NewHTTPEmbedder(os.Getenv("EMBEDDING_ENDPOINT"), os.Getenv("EMBEDDING_MODEL"), os.Getenv("EMBEDDING_API_KEY"), os.Getenv("EMBEDDING_AUTH_HEADER"))
+	case "mock":
+		embedder = embedding.NewMockEmbedder(1536)
+	default:
+		log.Printf("Unknown EMBEDDING_PROVIDER '%s', defaulting to openai", embProvider)
+		embedder = embedding.NewOpenAIEmbedder(openaiKey, os.Getenv("EMBEDDING_MODEL"))
+	}
 
 	switch searchStrategy {
 	case "pgvector":

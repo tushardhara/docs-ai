@@ -6,7 +6,6 @@ require (
 	github.com/gofiber/fiber/v3 v3.0.0-rc.3
 	github.com/jackc/pgx/v5 v5.7.6
 	github.com/redis/go-redis/v9 v9.17.2
-	github.com/sashabaranov/go-openai v1.41.2
 )
 
 require (
