@@ -189,6 +189,35 @@ Response:
 }
 ```
 
+### 2b. Dev Seed (local only)
+
+Seed a project with one document + chunk + embedding using the current embedder (OpenAI, Google, HTTP, or mock based on env):
+
+```bash
+curl -X POST http://localhost:8080/v1/dev/seed \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",  # slug or UUID
+    "uri": "/hello",
+    "title": "Hello Doc",
+    "text": "hello world from cgap seed endpoint"
+  }'
+```
+
+Then query it:
+
+```bash
+curl -X POST http://localhost:8080/v1/search \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "query": "hello world",
+    "limit": 5
+  }'
+```
+
+Note: The seed endpoint is for local development only; ensure `DATABASE_URL` and embedding envs are set.
+
 ### 3. Deflect a Support Ticket
 
 ```bash
@@ -338,6 +367,13 @@ cgap/
 ### Running Tests
 ```bash
 go test ./...
+```
+
+Integration (requires pgvector-enabled Postgres):
+
+```bash
+DATABASE_URL=postgres://user:pass@localhost:5432/dbname \
+go test -tags=integration ./internal/search -run TestPGVectorIntegration
 ```
 
 - Local stack (docker-compose.local.yml):

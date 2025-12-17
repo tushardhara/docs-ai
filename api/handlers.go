@@ -76,11 +76,14 @@ func SearchHandler(c fiber.Ctx) error {
 		req.Limit = 10
 	}
 
+	start := time.Now()
+
 	// Call search service
 	hits, err := services.Search.Search(context.Background(), req.ProjectID, req.Query, req.Limit, req.Filters)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 	}
+	queryTimeMS := int(time.Since(start).Milliseconds())
 
 	// Ensure empty array instead of null in JSON
 	if hits == nil {
@@ -88,8 +91,9 @@ func SearchHandler(c fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(SearchResponse{
-		Hits:  hits,
-		Total: len(hits),
+		Hits:        hits,
+		Total:       len(hits),
+		QueryTimeMS: queryTimeMS,
 	})
 }
 

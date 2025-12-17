@@ -139,10 +139,11 @@ func (s *SearchServiceImpl) Search(ctx context.Context, projectID, query string,
 	// 2. Convert to API hits
 	var hits []api.SearchHit
 	for _, result := range results {
+		docID, _ := result.Metadata["document_id"].(string)
 		hits = append(hits, api.SearchHit{
 			ChunkID:    result.ID,
 			Text:       result.Text,
-			DocumentID: "",
+			DocumentID: docID,
 			Confidence: result.Score,
 		})
 	}

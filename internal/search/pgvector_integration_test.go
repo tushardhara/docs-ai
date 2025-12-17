@@ -7,19 +7,20 @@ import (
 	"os"
 	"testing"
 
-	"github.com/google/uuid"
-
 	"cgap/internal/embedding"
 	"cgap/internal/postgres"
+	"cgap/internal/service"
+
+	"github.com/google/uuid"
+	"github.com/pgvector/pgvector-go"
 )
 
-// Integration test requires real Postgres with pgvector and a valid OPENAI_API_KEY.
-// Run with: DATABASE_URL=... OPENAI_API_KEY=... go test -tags=integration ./internal/search -run TestPGVectorIntegration
+// Integration test requires real Postgres with pgvector. Run with:
+// DATABASE_URL=... go test -tags=integration ./internal/search -run TestPGVectorIntegration
 func TestPGVectorIntegration(t *testing.T) {
 	dbURL := os.Getenv("DATABASE_URL")
-	apiKey := os.Getenv("OPENAI_API_KEY")
-	if dbURL == "" || apiKey == "" {
-		t.Skip("DATABASE_URL and OPENAI_API_KEY must be set for integration test")
+	if dbURL == "" {
+		t.Skip("DATABASE_URL must be set for integration test")
 	}
 
 	ctx := context.Background()
@@ -30,10 +31,11 @@ func TestPGVectorIntegration(t *testing.T) {
 	}
 	defer store.Close()
 
-	embedder := embedding.NewOpenAIEmbedder(apiKey, os.Getenv("EMBEDDING_MODEL"))
+	embedder := embedding.NewMockEmbedder(768)
 
 	// Create a small fixture: project -> document -> chunk -> chunk_embedding
 	projectID := uuid.New().String()
+	slug := "itest-" + uuid.New().String()
 	docID := uuid.New().String()
 	chunkID := uuid.New().String()
 
@@ -41,8 +43,8 @@ func TestPGVectorIntegration(t *testing.T) {
 
 	_, err = pool.Exec(ctx, `
         INSERT INTO projects (id, name, slug)
-        VALUES ($1, 'testproj', 'testproj')
-    `, projectID)
+        VALUES ($1, 'Integration Test', $2)
+    `, projectID, slug)
 	if err != nil {
 		t.Fatalf("insert project: %v", err)
 	}
@@ -75,21 +77,29 @@ func TestPGVectorIntegration(t *testing.T) {
 	_, err = pool.Exec(ctx, `
         INSERT INTO chunk_embeddings (chunk_id, embedding)
         VALUES ($1, $2)
-    `, chunkID, vec)
+    `, chunkID, pgvector.NewVector(vec))
 	if err != nil {
 		t.Fatalf("insert chunk embedding: %v", err)
 	}
 	defer pool.Exec(ctx, `DELETE FROM chunk_embeddings WHERE chunk_id = $1`, chunkID)
 
 	pg := NewPGVector(store, embedder)
-	results, err := pg.Search(ctx, "chunks", "hello world", 3, map[string]any{"project_id": projectID})
+	svc := service.NewSearchService(store, pg)
+
+	hits, err := svc.Search(ctx, slug, "hello world", 3, nil)
 	if err != nil {
 		t.Fatalf("search failed: %v", err)
 	}
-	if len(results) == 0 {
-		t.Fatalf("expected at least one result")
+	if len(hits) != 1 {
+		t.Fatalf("expected 1 hit, got %d", len(hits))
 	}
-	if results[0].ID != chunkID {
-		t.Fatalf("expected chunk %s, got %s", chunkID, results[0].ID)
+	if hits[0].ChunkID != chunkID {
+		t.Fatalf("expected chunk %s, got %s", chunkID, hits[0].ChunkID)
+	}
+	if hits[0].DocumentID != docID {
+		t.Fatalf("expected document %s, got %s", docID, hits[0].DocumentID)
+	}
+	if hits[0].Confidence <= 0 {
+		t.Fatalf("expected positive confidence, got %f", hits[0].Confidence)
 	}
 }
