@@ -99,7 +99,7 @@ func main() {
 	case "openai":
 		embedder = embedding.NewOpenAIEmbedder(openaiKey, os.Getenv("EMBEDDING_MODEL"))
 	case "google":
-		embedder = embedding.NewGoogleEmbedder(os.Getenv("GOOGLE_API_KEY"), os.Getenv("EMBEDDING_MODEL"))
+		embedder = embedding.NewGoogleEmbedder(os.Getenv("GEMINI_API_KEY"), os.Getenv("EMBEDDING_MODEL"))
 	case "http":
 		embedder = embedding.NewHTTPEmbedder(os.Getenv("EMBEDDING_ENDPOINT"), os.Getenv("EMBEDDING_MODEL"), os.Getenv("EMBEDDING_API_KEY"), os.Getenv("EMBEDDING_AUTH_HEADER"))
 	case "mock":

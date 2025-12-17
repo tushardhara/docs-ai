@@ -32,3 +32,4 @@ dist/
 # Temporary
 tmp/
 temp/
+.env*

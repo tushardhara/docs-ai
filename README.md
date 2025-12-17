@@ -340,6 +340,20 @@ cgap/
 go test ./...
 ```
 
+- Build binaries:
+```bash
+go build -o bin/api cmd/api/main.go
+go build -o bin/worker cmd/worker/main.go
+```
+
+- Integration test (requires real Postgres with pgvector + OpenAI key):
+```bash
+DATABASE_URL=postgres://user:pass@localhost:5432/dbname \
+OPENAI_API_KEY=sk-... \
+go test -tags=integration ./internal/search -run TestPGVectorIntegration
+```
+
+
 ### Running Linter
 ```bash
 golangci-lint run
