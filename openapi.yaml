@@ -1,0 +1,367 @@
+openapi: 3.1.0
+info:
+  title: cgap API
+  version: 0.1.0
+servers:
+  - url: https://api.cgap.dev
+security:
+  - apiKeyAuth: []
+components:
+  securitySchemes:
+    apiKeyAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+  schemas:
+    Citation:
+      type: object
+      properties:
+        chunk_id: { type: string }
+        quote: { type: string }
+        score: { type: number }
+        document_uri: { type: string }
+        source_type: { type: string }
+    ChatRequest:
+      type: object
+      required: [project_id, query]
+      properties:
+        project_id: { type: string }
+        query: { type: string }
+        mode: { type: string, enum: [chat, search], default: chat }
+        context_filters: { type: object, additionalProperties: true }
+        top_k: { type: integer, minimum: 1, maximum: 20, default: 6 }
+    ChatResponse:
+      type: object
+      properties:
+        thread_id: { type: string }
+        answer: { type: string }
+        is_uncertain: { type: boolean }
+        citations:
+          type: array
+          items: { $ref: '#/components/schemas/Citation' }
+    StreamFrame:
+      type: object
+      properties:
+        delta: { type: string }
+        citations:
+          type: array
+          items: { $ref: '#/components/schemas/Citation' }
+        is_uncertain: { type: boolean }
+    SearchHit:
+      type: object
+      properties:
+        chunk_id: { type: string }
+        text: { type: string }
+        document_uri: { type: string }
+        source_type: { type: string }
+        score: { type: number }
+    DeflectSuggestion:
+      type: object
+      properties:
+        answer: { type: string }
+        citations:
+          type: array
+          items: { $ref: '#/components/schemas/Citation' }
+        score: { type: number }
+    AnalyticsSummary:
+      type: object
+      properties:
+        total_questions: { type: integer }
+        uncertain: { type: integer }
+        unique_users: { type: integer }
+        deflection_rate: { type: number }
+    GapCluster:
+      type: object
+      properties:
+        id: { type: string }
+        window: { type: string, enum: ["7d","30d","90d"] }
+        label: { type: string }
+        recommendation: { type: string }
+        size: { type: integer }
+        status: { type: string, enum: ["open","in_review","done"] }
+paths:
+  /v1/chat:
+    post:
+      summary: Single-turn chat (new thread)
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatResponse' }
+  /v1/chat/stream:
+    post:
+      summary: Streaming chat (SSE)
+      security:
+        - apiKeyAuth: []
+      responses:
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/StreamFrame'
+  /v1/threads/{id}/chat:
+    post:
+      summary: Follow-up in thread
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ChatRequest' }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ChatResponse' }
+  /v1/threads/{id}/chat/stream:
+    post:
+      summary: Streaming follow-up (SSE)
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: text/event-stream
+          content:
+            text/event-stream:
+              schema:
+                $ref: '#/components/schemas/StreamFrame'
+  /v1/search:
+    post:
+      summary: Hybrid search
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, query]
+              properties:
+                project_id: { type: string }
+                query: { type: string }
+                top_k: { type: integer, default: 8 }
+                filters: { type: object, additionalProperties: true }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  hits:
+                    type: array
+                    items: { $ref: '#/components/schemas/SearchHit' }
+  /v1/deflect/suggest:
+    post:
+      summary: Ticket deflection suggestions
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, subject, body]
+              properties:
+                project_id: { type: string }
+                subject: { type: string }
+                body: { type: string }
+                top_k: { type: integer, default: 3 }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  suggestion_id: { type: string }
+                  suggestions:
+                    type: array
+                    items: { $ref: '#/components/schemas/DeflectSuggestion' }
+  /v1/deflect/event:
+    post:
+      summary: Track deflection outcomes
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, suggestion_id, action]
+              properties:
+                project_id: { type: string }
+                suggestion_id: { type: string }
+                action: { type: string, enum: [shown, clicked, solved, submitted] }
+                thread_id: { type: string }
+                metadata: { type: object }
+      responses:
+        '200': { description: OK }
+  /v1/sources:
+    post:
+      summary: Create a source (crawl, GitHub, OpenAPI, etc.)
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, type, config]
+              properties:
+                project_id: { type: string }
+                type: { type: string, enum: [crawl, github, openapi, slack, discord, upload] }
+                config: { type: object }
+      responses:
+        '200': { description: OK }
+  /v1/ingest:
+    post:
+      summary: Trigger ingest or file upload
+      security:
+        - apiKeyAuth: []
+      responses:
+        '202': { description: Accepted }
+  /v1/ingest/{job_id}:
+    get:
+      summary: Ingest job status
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: job_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /v1/analytics/summary:
+    get:
+      summary: Aggregate metrics
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - in: query
+          name: project_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: from
+          schema: { type: string, format: date-time }
+        - in: query
+          name: to
+          schema: { type: string, format: date-time }
+        - in: query
+          name: integration
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/AnalyticsSummary' }
+  /v1/analytics/conversations:
+    get:
+      summary: Paged conversation list with filters
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - in: query
+          name: project_id
+          required: true
+          schema: { type: string }
+        - in: query
+          name: page
+          schema: { type: integer, default: 1 }
+        - in: query
+          name: page_size
+          schema: { type: integer, default: 20 }
+        - in: query
+          name: integration
+          schema: { type: string }
+        - in: query
+          name: status
+          schema: { type: string }
+        - in: query
+          name: feedback
+          schema: { type: string }
+        - in: query
+          name: text
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
+  /v1/gaps/run:
+    post:
+      summary: Trigger gap clustering for a window
+      security:
+        - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [project_id, window]
+              properties:
+                project_id: { type: string }
+                window: { type: string, enum: ["7d","30d","90d"] }
+      responses:
+        '202': { description: Accepted }
+  /v1/gaps:
+    get:
+      summary: List clusters
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - in: query
+          name: project_id
+          required: true
+          schema: { type: string }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  clusters:
+                    type: array
+                    items: { $ref: '#/components/schemas/GapCluster' }
+  /v1/gaps/{id}:
+    get:
+      summary: Cluster detail
+      security:
+        - apiKeyAuth: []
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string }
+      responses:
+        '200': { description: OK }
