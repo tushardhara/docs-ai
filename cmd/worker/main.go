@@ -11,6 +11,7 @@ import (
 	"os/signal"
 	"path"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -35,11 +36,6 @@ func main() {
 		log.Fatal("DATABASE_URL environment variable not set")
 	}
 
-	redisURL := os.Getenv("REDIS_URL")
-	if redisURL == "" {
-		redisURL = "localhost:6379"
-	}
-
 	// Initialize PostgreSQL storage with pgx
 	store, err := postgres.New(dbURL)
 	if err != nil {
@@ -47,10 +43,8 @@ func main() {
 	}
 	defer store.Close()
 
-	// Initialize Redis client
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: redisURL,
-	})
+	// Initialize Redis client (supports host:port and redis:// URI)
+	redisClient := redis.NewClient(redisOptionsFromEnv())
 	defer redisClient.Close()
 
 	// Initialize Redis queue consumer
@@ -132,6 +126,43 @@ func buildEmbedder() embedding.Embedder {
 		}
 		return embedding.NewGoogleEmbedder(key, model)
 	}
+}
+
+// redisOptionsFromEnv parses REDIS_URL and returns go-redis options.
+// Supports formats:
+//   - host:port
+//   - redis://[:password@]host:port[/db]?db=...
+//   - rediss:// (TLS not configured here)
+func redisOptionsFromEnv() *redis.Options {
+	raw := os.Getenv("REDIS_URL")
+	if raw == "" {
+		return &redis.Options{Addr: "localhost:6379"}
+	}
+	if strings.HasPrefix(raw, "redis://") || strings.HasPrefix(raw, "rediss://") {
+		u, err := neturl.Parse(raw)
+		if err != nil {
+			return &redis.Options{Addr: raw}
+		}
+		opt := &redis.Options{Addr: u.Host}
+		if u.User != nil {
+			opt.Username = u.User.Username()
+			if pw, ok := u.User.Password(); ok {
+				opt.Password = pw
+			}
+		}
+		if dbStr := strings.TrimPrefix(u.Path, "/"); dbStr != "" {
+			if n, err := strconv.Atoi(dbStr); err == nil {
+				opt.DB = n
+			}
+		}
+		if qdb := u.Query().Get("db"); qdb != "" {
+			if n, err := strconv.Atoi(qdb); err == nil {
+				opt.DB = n
+			}
+		}
+		return opt
+	}
+	return &redis.Options{Addr: raw}
 }
 
 // handleIngest performs a minimal ingestion: fetch content from URL(s),
@@ -241,8 +272,16 @@ func handleIngest(ctx context.Context, store *postgres.Store, emb embedding.Embe
 	pool := store.Pool()
 	httpClient := &http.Client{Timeout: 30 * time.Second}
 
+	// Resolve project slug -> UUID if needed
+	pid := p.ProjectID
+	if !looksLikeUUID(pid) {
+		if err := pool.QueryRow(ctx, `SELECT id FROM projects WHERE slug = $1`, pid).Scan(&pid); err != nil {
+			return err
+		}
+	}
+
 	// Initialize running status
-	_ = markJobRunning(ctx, rdb, jobID, p.ProjectID, len(urls))
+	_ = markJobRunning(ctx, rdb, jobID, pid, len(urls))
 
 	// Concurrency settings: default to 4; use crawl.concurrency when provided
 	maxWorkers := 4
@@ -281,7 +320,7 @@ func handleIngest(ctx context.Context, store *postgres.Store, emb embedding.Embe
 					return
 				}
 			}
-			if err := processURL(workCtx, pool, httpClient, emb, p.ProjectID, p.Source, u); err != nil {
+			if err := processURL(workCtx, pool, httpClient, emb, pid, p.Source, u); err != nil {
 				log.Printf("ingest: error processing %s: %v", u, err)
 				if p.FailFast {
 					once.Do(func() {
@@ -419,38 +458,70 @@ func buildCrawlURLList(ctx context.Context, cs *api.CrawlSpec) ([]string, error)
 
 // parseSitemap parses a simple sitemap.xml (urlset) and returns URL list.
 func parseSitemap(ctx context.Context, sitemapURL string) ([]string, error) {
+	visited := map[string]bool{}
+	var out []string
 	client := &http.Client{Timeout: 30 * time.Second}
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, sitemapURL, nil)
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, err
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return nil, nil
-	}
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, err
-	}
-	type urlEntry struct {
-		Loc string `xml:"loc"`
-	}
-	type urlSet struct {
-		URLs []urlEntry `xml:"url"`
-	}
-	u := urlSet{}
-	if err := xml.Unmarshal(data, &u); err != nil {
-		// Not urlset or parse failed; ignore quietly
-		return nil, nil
-	}
-	out := make([]string, 0, len(u.URLs))
-	for _, e := range u.URLs {
-		if e.Loc != "" {
-			out = append(out, strings.TrimSpace(e.Loc))
+	var fetch func(string, int) error
+	fetch = func(url string, depth int) error {
+		if visited[url] || depth > 3 {
+			return nil
 		}
+		visited[url] = true
+		req, _ := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+		resp, err := client.Do(req)
+		if err != nil {
+			return nil
+		}
+		defer resp.Body.Close()
+		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+			return nil
+		}
+		data, err := io.ReadAll(resp.Body)
+		if err != nil {
+			return nil
+		}
+		type urlEntry struct {
+			Loc string `xml:"loc"`
+		}
+		type urlSet struct {
+			URLs []urlEntry `xml:"url"`
+		}
+		type sitemapEntry struct {
+			Loc string `xml:"loc"`
+		}
+		type sitemapIndex struct {
+			Maps []sitemapEntry `xml:"sitemap"`
+		}
+		u := urlSet{}
+		if err := xml.Unmarshal(data, &u); err == nil && len(u.URLs) > 0 {
+			for _, e := range u.URLs {
+				if e.Loc != "" {
+					out = append(out, strings.TrimSpace(e.Loc))
+				}
+			}
+			return nil
+		}
+		si := sitemapIndex{}
+		if err := xml.Unmarshal(data, &si); err == nil && len(si.Maps) > 0 {
+			limit := 0
+			for _, e := range si.Maps {
+				if e.Loc == "" {
+					continue
+				}
+				if limit >= 50 { // cap nested sitemaps
+					break
+				}
+				limit++
+				_ = fetch(strings.TrimSpace(e.Loc), depth+1)
+				if len(out) > 5000 { // safety cap
+					break
+				}
+			}
+		}
+		return nil
 	}
-	return out, nil
+	_ = fetch(sitemapURL, 0)
+	return dedup(out), nil
 }
 
 // crawlBFS performs a simple single-threaded BFS crawl with dedup and limits.
@@ -602,6 +673,7 @@ func filterURLs(in []string, cs *api.CrawlSpec) []string {
 // robotsAllow parses minimal robots.txt rules for UA "*" and checks path.
 func robotsAllow(txt string, p string) bool {
 	uaStar := false
+	allows := make([]string, 0, 8)
 	disallows := make([]string, 0, 8)
 	lines := strings.Split(txt, "\n")
 	for _, line := range lines {
@@ -613,24 +685,47 @@ func robotsAllow(txt string, p string) bool {
 		if strings.HasPrefix(low, "user-agent:") {
 			v := strings.TrimSpace(strings.TrimPrefix(low, "user-agent:"))
 			uaStar = (v == "*")
-		} else if uaStar && strings.HasPrefix(low, "disallow:") {
+			continue
+		}
+		if !uaStar {
+			continue
+		}
+		if strings.HasPrefix(low, "disallow:") {
 			v := strings.TrimSpace(strings.TrimPrefix(s, "Disallow:"))
 			if v != "" {
 				disallows = append(disallows, v)
 			}
-		} else if strings.HasPrefix(low, "user-agent:") {
-			// new UA block, stop honoring * unless it’s another *
-			v := strings.TrimSpace(strings.TrimPrefix(low, "user-agent:"))
-			uaStar = (v == "*")
+			continue
+		}
+		if strings.HasPrefix(low, "allow:") {
+			v := strings.TrimSpace(strings.TrimPrefix(s, "Allow:"))
+			if v != "" {
+				allows = append(allows, v)
+			}
+			continue
 		}
 	}
+	bestAllow := 0
+	for _, a := range allows {
+		if strings.HasPrefix(p, a) {
+			if len(a) > bestAllow {
+				bestAllow = len(a)
+			}
+		}
+	}
+	bestDis := 0
 	for _, d := range disallows {
-		if d == "/" {
-			return false
-		}
 		if strings.HasPrefix(p, d) {
-			return false
+			if len(d) > bestDis {
+				bestDis = len(d)
+			}
 		}
+	}
+	if bestAllow >= bestDis {
+		return true
+	}
+	if bestDis > 0 {
+		return false
 	}
 	return true
 }
@@ -852,3 +947,8 @@ func stripBasicHTML(s string) string {
 	}
 	return strings.TrimSpace(t)
 }
+
+// looksLikeUUID reports whether s matches canonical UUID v1-5 format.
+var uuidReWorker = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
+
+func looksLikeUUID(s string) bool { return uuidReWorker.MatchString(s) }
