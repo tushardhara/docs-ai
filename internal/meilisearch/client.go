@@ -32,7 +32,6 @@ type searchRequest struct {
 	Limit   int      `json:"limit,omitempty"`
 	Filter  []string `json:"filter,omitempty"`
 	Ranking []string `json:"rankingRules,omitempty"`
-	ShowRaw bool     `json:"showRankingScore,true"`
 }
 
 // searchResponse matches Meilisearch search API response format
