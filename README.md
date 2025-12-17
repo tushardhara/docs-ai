@@ -369,10 +369,12 @@ cgap/
 go test ./...
 ```
 
-Integration (requires pgvector-enabled Postgres):
+Integration (requires pgvector-enabled Postgres + embedding API key):
 
 ```bash
 DATABASE_URL=postgres://user:pass@localhost:5432/dbname \
+GEMINI_API_KEY=your_key_here \
+EMBEDDING_MODEL=gemini-embedding-001 \
 go test -tags=integration ./internal/search -run TestPGVectorIntegration
 ```
 

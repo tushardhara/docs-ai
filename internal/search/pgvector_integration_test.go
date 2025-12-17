@@ -7,20 +7,27 @@ import (
 	"os"
 	"testing"
 
+	"github.com/google/uuid"
+	"github.com/pgvector/pgvector-go"
+
 	"cgap/internal/embedding"
 	"cgap/internal/postgres"
 	"cgap/internal/service"
-
-	"github.com/google/uuid"
-	"github.com/pgvector/pgvector-go"
 )
 
-// Integration test requires real Postgres with pgvector. Run with:
-// DATABASE_URL=... go test -tags=integration ./internal/search -run TestPGVectorIntegration
+// Integration test requires real Postgres with pgvector and a live embedding API.
+// Run with (Gemini example):
+// DATABASE_URL=... GEMINI_API_KEY=... EMBEDDING_MODEL=gemini-embedding-001 \
+// go test -tags=integration ./internal/search -run TestPGVectorIntegration
 func TestPGVectorIntegration(t *testing.T) {
 	dbURL := os.Getenv("DATABASE_URL")
-	if dbURL == "" {
-		t.Skip("DATABASE_URL must be set for integration test")
+	apiKey := os.Getenv("GEMINI_API_KEY")
+	model := os.Getenv("EMBEDDING_MODEL")
+	if model == "" {
+		model = "gemini-embedding-001"
+	}
+	if dbURL == "" || apiKey == "" {
+		t.Skip("DATABASE_URL and GEMINI_API_KEY must be set for integration test")
 	}
 
 	ctx := context.Background()
@@ -31,7 +38,7 @@ func TestPGVectorIntegration(t *testing.T) {
 	}
 	defer store.Close()
 
-	embedder := embedding.NewMockEmbedder(768)
+	embedder := embedding.NewGoogleEmbedder(apiKey, model)
 
 	// Create a small fixture: project -> document -> chunk -> chunk_embedding
 	projectID := uuid.New().String()
