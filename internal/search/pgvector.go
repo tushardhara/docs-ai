@@ -3,12 +3,14 @@ package search
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"cgap/internal/embedding"
 	"cgap/internal/service"
 	"cgap/internal/storage"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pgvector/pgvector-go"
 )
 
 // PGVector implements service.Search using PostgreSQL (pgvector).
@@ -47,12 +49,24 @@ func (p *PGVector) Search(ctx context.Context, index, query string, topK int, fi
 		return nil, fmt.Errorf("embed query failed: %w", err)
 	}
 
+	// Convert to pgvector.Vector for proper SQL encoding
+	vec := pgvector.NewVector(qvec)
+
 	// Get underlying pgx pool from store (non-invasive via ad-hoc interface)
 	var pool *pgxpool.Pool
 	if ps, ok := p.store.(interface{ Pool() *pgxpool.Pool }); ok {
 		pool = ps.Pool()
 	} else {
 		return nil, fmt.Errorf("store does not expose connection pool")
+	}
+
+	// Support passing project slug by resolving to UUID if needed
+	pid := projectID
+	if !looksLikeUUID(projectID) {
+		if err := pool.QueryRow(ctx, `SELECT id FROM projects WHERE slug = $1`, projectID).Scan(&pid); err != nil {
+			// Return a clean, user-friendly error without internal DB details
+			return nil, fmt.Errorf("project '%s' not found", projectID)
+		}
 	}
 
 	const sql = `
@@ -69,7 +83,7 @@ func (p *PGVector) Search(ctx context.Context, index, query string, topK int, fi
 		LIMIT $3
 	`
 
-	rows, err := pool.Query(ctx, sql, qvec, projectID, topK)
+	rows, err := pool.Query(ctx, sql, vec, pid, topK)
 	if err != nil {
 		return nil, fmt.Errorf("pgvector query failed: %w", err)
 	}
@@ -100,4 +114,10 @@ func (p *PGVector) Search(ctx context.Context, index, query string, topK int, fi
 	}
 
 	return out, nil
+}
+
+var uuidRe = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
+
+func looksLikeUUID(s string) bool {
+	return uuidRe.MatchString(s)
 }

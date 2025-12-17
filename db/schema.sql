@@ -79,7 +79,7 @@ CREATE INDEX chunks_document_ord ON chunks(document_id, ord);
 
 CREATE TABLE chunk_embeddings (
   chunk_id uuid PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
-  embedding vector(1536)
+  embedding vector(768)
 );
 CREATE INDEX ON chunk_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
@@ -157,7 +157,7 @@ CREATE INDEX analytics_project_time ON analytics_events(project_id, occurred_at)
 
 CREATE TABLE gap_candidates (
   answer_id uuid PRIMARY KEY REFERENCES answers(message_id) ON DELETE CASCADE,
-  question_embedding vector(1536),
+  question_embedding vector(768),
   uncertainty_reason text
 );
 CREATE INDEX ON gap_candidates USING ivfflat (question_embedding vector_cosine_ops) WITH (lists = 100);

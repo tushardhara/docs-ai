@@ -79,7 +79,7 @@ CREATE INDEX chunks_document_ord ON chunks(document_id, ord);
 
 CREATE TABLE chunk_embeddings (
   chunk_id uuid PRIMARY KEY REFERENCES chunks(id) ON DELETE CASCADE,
-  embedding vector(1536)
+  embedding vector(768)
 );
 CREATE INDEX ON chunk_embeddings USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
 
