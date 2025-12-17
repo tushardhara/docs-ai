@@ -137,16 +137,83 @@ type DeflectEventRequest struct {
 }
 
 type IngestRequest struct {
-	ProjectID      string         `json:"project_id"`
-	Source         map[string]any `json:"source"`                   // {"type": "url", "url": "..."}
-	ChunkStrategy  string         `json:"chunk_strategy,omitempty"` // "semantic", "fixed", etc.
-	ChunkSizeToken int            `json:"chunk_size_token,omitempty"`
+	ProjectID      string     `json:"project_id"`
+	Source         SourceSpec `json:"source"`                   // {"type": "url"|"crawl"|"github"|"openapi"|"slack"|"discord"|"upload", ...}
+	ChunkStrategy  string     `json:"chunk_strategy,omitempty"` // "semantic", "fixed", etc.
+	ChunkSizeToken int        `json:"chunk_size_token,omitempty"`
 }
 
 type IngestResponse struct {
 	JobID     string `json:"job_id"`
 	Status    string `json:"status"` // "queued", "processing", "completed"
 	ProjectID string `json:"project_id"`
+}
+
+// SourceSpec describes an ingestion source.
+type SourceSpec struct {
+	Type       string         `json:"type"`             // url|crawl|github|openapi|slack|discord|upload
+	Config     map[string]any `json:"config,omitempty"` // arbitrary provider-specific config
+	URL        string         `json:"url,omitempty"`    // for url/crawl/openapi
+	OpenAPIURL string         `json:"openapi_url,omitempty"`
+	Repo       string         `json:"repo,omitempty"` // for github
+	Owner      string         `json:"owner,omitempty"`
+	Token      string         `json:"token,omitempty"`     // optional access tokens for providers
+	UploadID   string         `json:"upload_id,omitempty"` // for upload
+	Crawl      *CrawlSpec     `json:"crawl,omitempty"`     // crawl configuration for type=crawl
+	Media      *MediaSpec     `json:"media,omitempty"`     // media ingestion for type=image|video|youtube
+	Files      *FileSpec      `json:"files,omitempty"`     // document ingestion for type=document|pdf|markdown|txt
+}
+
+// IngestTaskPayload is the message body enqueued for ingestion.
+type IngestTaskPayload struct {
+	ProjectID      string     `json:"project_id"`
+	Source         SourceSpec `json:"source"`
+	ChunkStrategy  string     `json:"chunk_strategy,omitempty"`
+	ChunkSizeToken int        `json:"chunk_size_token,omitempty"`
+}
+
+// CrawlSpec describes how to fetch web content for web sources.
+type CrawlSpec struct {
+	// Mode selects strategy: "single" (just one page), "sitemap" (discover from sitemap), "crawl" (follow links).
+	Mode string `json:"mode"`
+	// StartURL is required for mode=single and crawl.
+	StartURL string `json:"start_url,omitempty"`
+	// SitemapURL is required for mode=sitemap.
+	SitemapURL string `json:"sitemap_url,omitempty"`
+	// Scope controls allowed URLs when crawling: "host" (default), "domain", or "prefix".
+	Scope string `json:"scope,omitempty"`
+	// Allow/Deny are regex or glob patterns to include/exclude paths.
+	Allow []string `json:"allow,omitempty"`
+	Deny  []string `json:"deny,omitempty"`
+	// Limits and politeness.
+	MaxDepth      int  `json:"max_depth,omitempty"`
+	MaxPages      int  `json:"max_pages,omitempty"`
+	RespectRobots bool `json:"respect_robots,omitempty"`
+	Concurrency   int  `json:"concurrency,omitempty"`
+	DelayMS       int  `json:"delay_ms,omitempty"`
+}
+
+// MediaSpec describes image/video ingestion parameters.
+type MediaSpec struct {
+	// Common
+	URLs []string `json:"urls,omitempty"` // direct media URLs
+
+	// Images
+	OCR     bool   `json:"ocr,omitempty"`
+	OCRLang string `json:"ocr_lang,omitempty"`
+
+	// Video/Audio transcripts
+	Transcript         bool     `json:"transcript,omitempty"`
+	TranscriptProvider string   `json:"transcript_provider,omitempty"` // youtube|whisper|assemblyai|none
+	YouTubeIDs         []string `json:"youtube_ids,omitempty"`
+	MaxDurationSec     int      `json:"max_duration_sec,omitempty"`
+}
+
+// FileSpec describes document/file ingestion parameters.
+type FileSpec struct {
+	URLs    []string `json:"urls,omitempty"`    // one or more document URLs
+	Format  string   `json:"format,omitempty"`  // pdf|txt|markdown|md|auto (default auto by extension/content-type)
+	Extract string   `json:"extract,omitempty"` // reader to use; e.g., pdfium, tika, md, plain
 }
 
 // Dev-only seeding endpoint to insert a document, chunk and embedding

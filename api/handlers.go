@@ -2,6 +2,7 @@ package api
 
 import (
 	"cgap/internal/embedding"
+	"cgap/internal/queue"
 	"context"
 	"time"
 
@@ -151,14 +152,103 @@ func IngestHandler(c fiber.Ctx) error {
 		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
 	}
 
-	if req.ProjectID == "" || len(req.Source) == 0 {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id and source required"})
+	if req.ProjectID == "" || req.Source.Type == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id and source.type required"})
 	}
 
-	// Queue ingest job
-	// For now, return placeholder job ID
+	// Basic source validation by type
+	switch req.Source.Type {
+	case "url":
+		if req.Source.URL == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source.url required for type=url"})
+		}
+	case "crawl":
+		if req.Source.Crawl == nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source.crawl required for type=crawl"})
+		}
+		mode := req.Source.Crawl.Mode
+		if mode == "" {
+			mode = "crawl"
+			req.Source.Crawl.Mode = mode
+		}
+		switch mode {
+		case "single":
+			if req.Source.Crawl.StartURL == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "crawl.start_url required for mode=single"})
+			}
+		case "sitemap":
+			if req.Source.Crawl.SitemapURL == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "crawl.sitemap_url required for mode=sitemap"})
+			}
+		case "crawl":
+			if req.Source.Crawl.StartURL == "" {
+				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "crawl.start_url required for mode=crawl"})
+			}
+		default:
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "unsupported crawl.mode"})
+		}
+	case "openapi":
+		if req.Source.OpenAPIURL == "" && req.Source.URL == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source.openapi_url or source.url required for openapi"})
+		}
+	case "github":
+		if req.Source.Owner == "" || req.Source.Repo == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source.owner and source.repo required for github"})
+		}
+	case "document", "documents", "file", "files", "pdf", "markdown", "md", "txt":
+		// Accept either single source.url or files.urls
+		if req.Source.URL == "" && (req.Source.Files == nil || len(req.Source.Files.URLs) == 0) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source.url or files.urls required for document ingestion"})
+		}
+	case "image", "images":
+		// Allow either single URL or media.urls
+		if req.Source.URL == "" && (req.Source.Media == nil || len(req.Source.Media.URLs) == 0) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source.url or media.urls required for image ingestion"})
+		}
+	case "video", "videos":
+		if (req.Source.Media == nil || (len(req.Source.Media.URLs) == 0 && len(req.Source.Media.YouTubeIDs) == 0)) && req.Source.URL == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "provide media.urls or media.youtube_ids or source.url for video ingestion"})
+		}
+		// If youtube IDs are provided, prefer transcript flow.
+		// Worker will decide provider based on transcript_provider.
+	case "youtube":
+		if req.Source.Media == nil || len(req.Source.Media.YouTubeIDs) == 0 {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "media.youtube_ids required for type=youtube"})
+		}
+	case "upload":
+		if req.Source.UploadID == "" {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source.upload_id required for upload"})
+		}
+	case "slack", "discord":
+		// allow minimal config; worker can validate tokens/channels later
+	default:
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "unsupported source.type"})
+	}
+
+	// Build task payload
+	payload := IngestTaskPayload{
+		ProjectID:      req.ProjectID,
+		Source:         req.Source,
+		ChunkStrategy:  req.ChunkStrategy,
+		ChunkSizeToken: req.ChunkSizeToken,
+	}
+
+	jobID := "job_" + req.ProjectID
+
+	// Try to enqueue via Redis producer if wired
+	if services != nil && services.Queue != nil {
+		if prod, ok := services.Queue.(*queue.Producer); ok && prod != nil {
+			t := queue.Task{Type: "ingest", Payload: payload, ID: jobID}
+			if err := prod.Enqueue(context.Background(), t); err != nil {
+				// If enqueue fails, return 500 with error
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "enqueue failed", "details": err.Error()})
+			}
+		}
+	}
+
+	// Return accepted response
 	return c.Status(fiber.StatusAccepted).JSON(IngestResponse{
-		JobID:     "job_" + req.ProjectID,
+		JobID:     jobID,
 		Status:    "queued",
 		ProjectID: req.ProjectID,
 	})

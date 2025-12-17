@@ -290,10 +290,7 @@ curl -X POST http://localhost:8080/v1/ingest \
   -H "Content-Type: application/json" \
   -d '{
     "project_id": "proj_123",
-    "source": {
-      "type": "url",
-      "url": "https://docs.example.com"
-    },
+    "source": { "type": "url", "url": "https://docs.example.com" },
     "chunk_strategy": "semantic"
   }'
 ```
@@ -314,6 +311,104 @@ The worker will:
 4. Index in Meilisearch
 5. Store chunks in PostgreSQL
 6. Report completion via webhook
+
+### Ingest Scenarios
+
+- Single page (no traversal):
+```bash
+curl -X POST http://localhost:8080/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "source": { "type": "crawl", "crawl": { "mode": "single", "start_url": "https://docs.example.com/guide" } },
+    "chunk_strategy": "semantic",
+    "chunk_size_token": 800
+  }'
+```
+
+- Sitemap-based (discover from sitemap):
+```bash
+curl -X POST http://localhost:8080/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "source": { "type": "crawl", "crawl": { "mode": "sitemap", "sitemap_url": "https://docs.example.com/sitemap.xml" } },
+    "chunk_strategy": "semantic"
+  }'
+```
+
+- Full-site crawl (follow links with scope and limits):
+```bash
+curl -X POST http://localhost:8080/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "source": {
+      "type": "crawl",
+      "crawl": {
+        "mode": "crawl",
+        "start_url": "https://docs.example.com",
+        "scope": "host",
+        "max_depth": 2,
+        "max_pages": 200,
+        "respect_robots": true
+      }
+    },
+    "chunk_strategy": "semantic"
+  }'
+```
+
+Notes:
+- `scope`: `host` (default), `domain`, or `prefix` to constrain URLs.
+- `allow`/`deny`: add patterns under `crawl` to include/exclude paths.
+- `concurrency`, `delay_ms`: tune politeness.
+
+- Images with OCR:
+```bash
+curl -X POST http://localhost:8080/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "source": {
+      "type": "image",
+      "media": { "urls": ["https://example.com/diagram.png"], "ocr": true, "ocr_lang": "en" }
+    },
+    "chunk_strategy": "semantic"
+  }'
+```
+
+- YouTube (auto transcript):
+ - PDF document URL:
+```bash
+curl -X POST http://localhost:8080/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "source": { "type": "document", "files": { "urls": ["https://example.com/whitepaper.pdf"], "format": "pdf" } },
+    "chunk_strategy": "semantic"
+  }'
+```
+
+- Markdown page URL:
+```bash
+curl -X POST http://localhost:8080/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "source": { "type": "document", "files": { "urls": ["https://raw.githubusercontent.com/org/repo/README.md"], "format": "markdown" } }
+  }'
+```
+```bash
+curl -X POST http://localhost:8080/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "source": {
+      "type": "youtube",
+      "media": { "youtube_ids": ["dQw4w9WgXcQ"], "transcript": true, "transcript_provider": "youtube" }
+    }
+  }'
+```
 
 ## Project Structure
 
