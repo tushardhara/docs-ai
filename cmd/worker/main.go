@@ -7,6 +7,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/redis/go-redis/v9"
+
 	"cgap/internal/postgres"
 	"cgap/internal/queue"
 )
@@ -22,7 +24,7 @@ func main() {
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
-		redisURL = "redis://localhost:6379"
+		redisURL = "localhost:6379"
 	}
 
 	// Initialize PostgreSQL storage with pgx
@@ -32,25 +34,39 @@ func main() {
 	}
 	defer store.Close()
 
-	// TODO: Initialize Meilisearch client
-	// TODO: Initialize LLM client
+	// Initialize Redis client
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: redisURL,
+	})
+	defer redisClient.Close()
 
 	// Initialize Redis queue consumer
-	consumer := queue.NewConsumer(redisURL)
+	consumer := queue.NewConsumer(redisClient)
 
 	// Start job processor
 	go func() {
 		log.Println("Starting job consumer...")
-		err := consumer.Process(context.Background(), func(task queue.Task) error {
+		ctx := context.Background()
+		for {
+			// Get next task
+			task, err := consumer.Process(ctx)
+			if err != nil {
+				log.Printf("Consumer error: %v", err)
+				continue
+			}
+
+			// Nil task means timeout - no task available
+			if task == nil {
+				continue
+			}
+
+			// Route task to appropriate handler based on task.Type
+			log.Printf("Processing task: type=%s, id=%s", task.Type, task.ID)
+
 			// TODO: Route task to appropriate handler based on task.Type
 			// - "ingest": handle document ingestion (crawl, chunk, embed, index)
 			// - "gap_cluster": handle gap detection and clustering
 			// - etc.
-			log.Printf("Processing task: %s", task.Type)
-			return nil
-		})
-		if err != nil {
-			log.Printf("Consumer error: %v", err)
 		}
 	}()
 
