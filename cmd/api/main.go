@@ -49,7 +49,7 @@ func main() {
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
-		redisURL = "redis://localhost:6379"
+		redisURL = "localhost:6379"
 	}
 
 	// Initialize PostgreSQL storage with pgx
@@ -62,8 +62,22 @@ func main() {
 	// Initialize Meilisearch client
 	searchClient := meilisearch.New(meiliURL, meiliKey)
 
-	// Initialize LLM client (OpenAI)
-	llmClient := llm.New(openaiKey, "gpt-4o")
+	// Initialize LLM client with provider selection
+	llmProvider := os.Getenv("LLM_PROVIDER")
+	if llmProvider == "" {
+		llmProvider = "openai"
+	}
+
+	llmModel := os.Getenv("LLM_MODEL")
+
+	llmClient, err := llm.New(llm.ProviderConfig{
+		Provider: llmProvider,
+		APIKey:   openaiKey,
+		Model:    llmModel,
+	})
+	if err != nil {
+		log.Fatalf("Failed to initialize LLM client: %v", err)
+	}
 
 	// Initialize Redis client
 	redisClient := redis.NewClient(&redis.Options{
