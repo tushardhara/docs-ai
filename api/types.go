@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"time"
 
 	"cgap/internal/model"
@@ -29,71 +30,78 @@ type (
 
 // Interfaces keep transport decoupled from data stores.
 type ChatService interface {
-	Chat(req ChatRequest) (ChatResponse, error)
-	ChatStream(req ChatRequest) (<-chan StreamFrame, error)
+	Chat(ctx context.Context, req ChatRequest) (ChatResponse, error)
+	ChatStream(ctx context.Context, req ChatRequest) (<-chan StreamFrame, error)
 }
 
 type SearchService interface {
-	Search(projectID, query string, topK int, filters map[string]any) ([]SearchHit, error)
+	Search(ctx context.Context, projectID, query string, topK int, filters map[string]any) ([]SearchHit, error)
 }
 
 type DeflectService interface {
-	Suggest(projectID, subject, body string, topK int) (string, []DeflectSuggestion, error)
-	TrackEvent(projectID, suggestionID, action, threadID string, metadata map[string]any) error
+	Suggest(ctx context.Context, projectID, subject, body string, topK int) (string, []DeflectSuggestion, error)
+	TrackEvent(ctx context.Context, projectID, suggestionID, action, threadID string, metadata map[string]any) error
 }
 
 type AnalyticsService interface {
-	Summary(projectID string, from, to *time.Time, integration string) (AnalyticsSummary, error)
+	Summary(ctx context.Context, projectID string, from, to *time.Time, integration string) (AnalyticsSummary, error)
 }
 
 type GapsService interface {
-	Run(projectID, window string) (string, error)
-	List(projectID string) ([]GapCluster, error)
-	Get(projectID, clusterID string) (GapCluster, []GapClusterExample, error)
+	Run(ctx context.Context, projectID, window string) (string, error)
+	List(ctx context.Context, projectID string) ([]GapCluster, error)
+	Get(ctx context.Context, projectID, clusterID string) (GapCluster, []GapClusterExample, error)
 }
 
 // Request/response DTOs align with OpenAPI.
 type ChatRequest struct {
 	ProjectID      string         `json:"project_id"`
 	Query          string         `json:"query"`
+	UserID         string         `json:"user_id,omitempty"`
 	Mode           string         `json:"mode,omitempty"`
 	ContextFilters map[string]any `json:"context_filters,omitempty"`
 	TopK           int            `json:"top_k,omitempty"`
 	ThreadID       string         `json:"thread_id,omitempty"`
 }
 
+type ThreadCreateRequest struct {
+	ProjectID string `json:"project_id"`
+	UserID    string `json:"user_id,omitempty"`
+}
+
 type ChatResponse struct {
-	ThreadID    string     `json:"thread_id"`
-	Answer      string     `json:"answer"`
-	IsUncertain bool       `json:"is_uncertain"`
-	Citations   []Citation `json:"citations"`
+	ThreadID    string   `json:"thread_id"`
+	Answer      string   `json:"answer"`
+	IsUncertain bool     `json:"is_uncertain"`
+	Citations   []string `json:"citations"`
+	Confidence  float32  `json:"confidence"`
 }
 
 type StreamFrame struct {
-	Delta       string     `json:"delta"`
-	Citations   []Citation `json:"citations,omitempty"`
-	IsUncertain bool       `json:"is_uncertain,omitempty"`
+	Type string         `json:"type"` // "token", "done", "error"
+	Data map[string]any `json:"data"`
 }
 
 type SearchHit struct {
-	ChunkID     string  `json:"chunk_id"`
-	Text        string  `json:"text"`
-	DocumentURI string  `json:"document_uri"`
-	SourceType  string  `json:"source_type"`
-	Score       float32 `json:"score"`
+	ChunkID    string  `json:"chunk_id"`
+	Text       string  `json:"text"`
+	DocumentID string  `json:"document_id"`
+	Confidence float32 `json:"confidence"`
 }
 
 type DeflectSuggestion struct {
-	Answer    string     `json:"answer"`
-	Citations []Citation `json:"citations"`
-	Score     float32    `json:"score"`
+	ID        string  `json:"id"`
+	Title     string  `json:"title"`
+	Relevance float32 `json:"relevance"`
+	Rank      int     `json:"rank"`
 }
 
 type AnalyticsSummary struct {
-	TotalQuestions int     `json:"total_questions"`
-	Uncertain      int     `json:"uncertain"`
-	UniqueUsers    int     `json:"unique_users"`
-	DeflectionRate float32 `json:"deflection_rate"`
+	ProjectID      string  `json:"project_id"`
+	TotalChats     int     `json:"total_chats"`
+	TotalSearches  int     `json:"total_searches"`
+	TotalDeflected int     `json:"total_deflected"`
+	AvgConfidence  float32 `json:"avg_confidence"`
 }
 
 type SearchRequest struct {
@@ -156,4 +164,14 @@ type GapsResponse struct {
 type GapDetailResponse struct {
 	Cluster  GapCluster          `json:"cluster"`
 	Examples []GapClusterExample `json:"examples"`
+}
+
+// Services container holds all service implementations for dependency injection
+type Services struct {
+	Chat      ChatService
+	Search    SearchService
+	Deflect   DeflectService
+	Analytics AnalyticsService
+	Gaps      GapsService
+	Queue     interface{} // queue.Producer
 }

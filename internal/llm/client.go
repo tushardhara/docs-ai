@@ -3,42 +3,96 @@ package llm
 import (
 	"context"
 	"fmt"
+	"io"
+
+	"github.com/sashabaranov/go-openai"
 
 	"cgap/internal/service"
 )
 
-// Client wraps LLM API (OpenAI/Anthropic).
+// Client wraps OpenAI API for LLM operations.
 type Client struct {
-	provider string // "openai" or "anthropic"
-	apiKey   string
-	model    string
+	openai *openai.Client
+	model  string
 }
 
-func New(provider, apiKey, model string) *Client {
+func New(apiKey, model string) *Client {
+	if model == "" {
+		model = openai.GPT4o
+	}
 	return &Client{
-		provider: provider,
-		apiKey:   apiKey,
-		model:    model,
+		openai: openai.NewClient(apiKey),
+		model:  model,
 	}
 }
 
 // Chat sends messages and returns a single response.
 func (c *Client) Chat(ctx context.Context, messages []service.Message) (string, error) {
-	// TODO: Implement LLM API client (OpenAI or Anthropic)
-	// Convert messages to API format, send request, parse response
-	// Return assistant response text
-	_ = ctx
-	_ = messages
-	return "", fmt.Errorf("not implemented")
+	// Convert service.Message to openai.ChatCompletionMessage
+	msgs := make([]openai.ChatCompletionMessage, len(messages))
+	for i, msg := range messages {
+		msgs[i] = openai.ChatCompletionMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		}
+	}
+
+	resp, err := c.openai.CreateChatCompletion(ctx, openai.ChatCompletionRequest{
+		Model:    c.model,
+		Messages: msgs,
+	})
+	if err != nil {
+		return "", fmt.Errorf("failed to create chat completion: %w", err)
+	}
+
+	if len(resp.Choices) == 0 {
+		return "", fmt.Errorf("no choices in response")
+	}
+
+	return resp.Choices[0].Message.Content, nil
 }
 
 // Stream sends messages and streams responses.
-func (c *Client) Stream(ctx context.Context, messages []service.Message, onChunk func(string)) error {
-	// TODO: Implement streaming LLM API client
-	// Send request with stream=true, parse SSE chunks, call onChunk callback
-	// Return error if stream fails
-	_ = ctx
-	_ = messages
-	_ = onChunk
-	return fmt.Errorf("not implemented")
+func (c *Client) Stream(ctx context.Context, messages []service.Message) (<-chan string, error) {
+	// Convert service.Message to openai.ChatCompletionMessage
+	msgs := make([]openai.ChatCompletionMessage, len(messages))
+	for i, msg := range messages {
+		msgs[i] = openai.ChatCompletionMessage{
+			Role:    msg.Role,
+			Content: msg.Content,
+		}
+	}
+
+	stream, err := c.openai.CreateChatCompletionStream(ctx, openai.ChatCompletionRequest{
+		Model:    c.model,
+		Messages: msgs,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to create streaming chat completion: %w", err)
+	}
+
+	// Create channel to stream tokens
+	ch := make(chan string, 1)
+
+	go func() {
+		defer close(ch)
+		defer stream.Close()
+
+		for {
+			response, err := stream.Recv()
+			if err != nil {
+				if err == io.EOF {
+					break
+				}
+				// Error in stream - close and return
+				return
+			}
+
+			if len(response.Choices) > 0 && response.Choices[0].Delta.Content != "" {
+				ch <- response.Choices[0].Delta.Content
+			}
+		}
+	}()
+
+	return ch, nil
 }

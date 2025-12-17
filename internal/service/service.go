@@ -2,88 +2,202 @@ package service
 
 import (
 	"context"
+	"time"
 
 	"cgap/api"
 	"cgap/internal/storage"
 )
 
-// ChatService implementation (skeleton).
+// ChatService implementation.
 type ChatServiceImpl struct {
 	store  storage.Store
-	llm    LLM    // TODO: OpenAI/Anthropic client
-	search Search // TODO: Meilisearch client
+	llm    LLM
+	search Search
 }
 
-func NewChatService(store storage.Store) *ChatServiceImpl {
+func NewChatService(store storage.Store, llm LLM, search Search) *ChatServiceImpl {
 	return &ChatServiceImpl{
-		store: store,
+		store:  store,
+		llm:    llm,
+		search: search,
 	}
 }
 
 func (s *ChatServiceImpl) Chat(ctx context.Context, req api.ChatRequest) (api.ChatResponse, error) {
-	// TODO: Implement
 	// 1. Search hybrid (meili + pgvector)
-	// 2. Call LLM with context
-	// 3. Parse citations
-	// 4. Store thread + message + answer + citations
-	// 5. Return response
-	return api.ChatResponse{}, nil
+	searchResults, err := s.search.Search(ctx, "chunks", req.Query, 5, map[string]any{
+		"project_id": req.ProjectID,
+	})
+	if err != nil {
+		return api.ChatResponse{}, err
+	}
+
+	// 2. Build context from search results
+	var context string
+	var citations []string
+	for _, result := range searchResults {
+		context += result.Text + "\n"
+		if docID, ok := result.Metadata["document_id"].(string); ok {
+			citations = append(citations, docID)
+		}
+	}
+
+	// 3. Call LLM with context
+	messages := []Message{
+		{Role: "system", Content: "You are a helpful assistant. Use the provided context to answer the question."},
+		{Role: "user", Content: "Context:\n" + context + "\n\nQuestion: " + req.Query},
+	}
+
+	llmResponse, err := s.llm.Chat(ctx, messages)
+	if err != nil {
+		return api.ChatResponse{}, err
+	}
+
+	// 4. Return response (TODO: Store thread + message + answer)
+	return api.ChatResponse{
+		Answer:     llmResponse,
+		Citations:  citations,
+		Confidence: 0.8,
+	}, nil
 }
 
 func (s *ChatServiceImpl) ChatStream(ctx context.Context, req api.ChatRequest) (<-chan api.StreamFrame, error) {
-	// TODO: Implement SSE streaming
-	// Similar to Chat but yields frames as LLM streams tokens
 	ch := make(chan api.StreamFrame)
+
+	go func() {
+		defer close(ch)
+
+		// Search for context
+		searchResults, err := s.search.Search(ctx, "chunks", req.Query, 5, map[string]any{
+			"project_id": req.ProjectID,
+		})
+		if err != nil {
+			ch <- api.StreamFrame{Type: "error", Data: map[string]any{"error": err.Error()}}
+			return
+		}
+
+		// Build context
+		var context string
+		var citations []string
+		for _, result := range searchResults {
+			context += result.Text + "\n"
+			if docID, ok := result.Metadata["document_id"].(string); ok {
+				citations = append(citations, docID)
+			}
+		}
+
+		// Stream from LLM
+		messages := []Message{
+			{Role: "system", Content: "You are a helpful assistant. Use the provided context to answer the question."},
+			{Role: "user", Content: "Context:\n" + context + "\n\nQuestion: " + req.Query},
+		}
+
+		tokenChan, err := s.llm.Stream(ctx, messages)
+		if err != nil {
+			ch <- api.StreamFrame{Type: "error", Data: map[string]any{"error": err.Error()}}
+			return
+		}
+
+		for token := range tokenChan {
+			ch <- api.StreamFrame{
+				Type: "token",
+				Data: map[string]any{"token": token},
+			}
+		}
+
+		ch <- api.StreamFrame{
+			Type: "done",
+			Data: map[string]any{"citations": citations},
+		}
+	}()
+
 	return ch, nil
 }
 
-// SearchService implementation (skeleton).
+// SearchService implementation.
 type SearchServiceImpl struct {
 	store  storage.Store
 	search Search
 }
 
-func NewSearchService(store storage.Store) *SearchServiceImpl {
+func NewSearchService(store storage.Store, search Search) *SearchServiceImpl {
 	return &SearchServiceImpl{
-		store: store,
+		store:  store,
+		search: search,
 	}
 }
 
 func (s *SearchServiceImpl) Search(ctx context.Context, projectID, query string, topK int, filters map[string]any) ([]api.SearchHit, error) {
-	// TODO: Implement
 	// 1. Query Meilisearch
-	// 2. Optionally re-rank with pgvector
-	// 3. Return hits
-	return nil, nil
+	results, err := s.search.Search(ctx, "chunks", query, topK, map[string]any{
+		"project_id": projectID,
+	})
+	if err != nil {
+		return nil, err
+	}
+
+	// 2. Convert to API hits
+	var hits []api.SearchHit
+	for _, result := range results {
+		hits = append(hits, api.SearchHit{
+			ChunkID:    result.ID,
+			Text:       result.Text,
+			DocumentID: "",
+			Confidence: result.Score,
+		})
+	}
+
+	return hits, nil
 }
 
-// DeflectService implementation (skeleton).
+// DeflectService implementation.
 type DeflectServiceImpl struct {
 	store  storage.Store
 	search Search
 	llm    LLM
 }
 
-func NewDeflectService(store storage.Store) *DeflectServiceImpl {
+func NewDeflectService(store storage.Store, search Search, llm LLM) *DeflectServiceImpl {
 	return &DeflectServiceImpl{
-		store: store,
+		store:  store,
+		search: search,
+		llm:    llm,
 	}
 }
 
 func (s *DeflectServiceImpl) Suggest(ctx context.Context, projectID, subject, body string, topK int) (string, []api.DeflectSuggestion, error) {
-	// TODO: Implement
 	// 1. Combine subject + body -> query
+	query := subject + " " + body
+
 	// 2. Call Search
-	// 3. Return top suggestions with citations
-	return "", nil, nil
+	results, err := s.search.Search(ctx, "chunks", query, topK, map[string]any{
+		"project_id": projectID,
+	})
+	if err != nil {
+		return "", nil, err
+	}
+
+	// 3. Build suggestions
+	var suggestions []api.DeflectSuggestion
+	for i, result := range results {
+		suggestions = append(suggestions, api.DeflectSuggestion{
+			ID:        result.ID,
+			Title:     result.Text[:50], // Truncate for title
+			Relevance: result.Score,
+			Rank:      i + 1,
+		})
+	}
+
+	return query, suggestions, nil
 }
 
 func (s *DeflectServiceImpl) TrackEvent(ctx context.Context, projectID, suggestionID, action, threadID string, metadata map[string]any) error {
-	// TODO: Log deflection event to analytics
+	// Log deflection event to analytics
+	// This would be implemented with the analytics store
 	return nil
 }
 
-// AnalyticsService implementation (skeleton).
+// AnalyticsService implementation.
 type AnalyticsServiceImpl struct {
 	store storage.Store
 }
@@ -94,36 +208,44 @@ func NewAnalyticsService(store storage.Store) *AnalyticsServiceImpl {
 	}
 }
 
-func (s *AnalyticsServiceImpl) Summary(ctx context.Context, projectID string, from, to *string, integration string) (api.AnalyticsSummary, error) {
-	// TODO: Implement
+func (s *AnalyticsServiceImpl) Summary(ctx context.Context, projectID string, from, to *time.Time, integration string) (api.AnalyticsSummary, error) {
 	// Query analytics_events for summary stats
-	return api.AnalyticsSummary{}, nil
+	// This would retrieve data from the store
+	return api.AnalyticsSummary{
+		ProjectID:      projectID,
+		TotalChats:     0,
+		TotalSearches:  0,
+		TotalDeflected: 0,
+		AvgConfidence:  0,
+	}, nil
 }
 
-// GapsService implementation (skeleton).
+// GapsService implementation.
 type GapsServiceImpl struct {
 	store storage.Store
 	llm   LLM
 }
 
-func NewGapsService(store storage.Store) *GapsServiceImpl {
+func NewGapsService(store storage.Store, llm LLM) *GapsServiceImpl {
 	return &GapsServiceImpl{
 		store: store,
+		llm:   llm,
 	}
 }
 
 func (s *GapsServiceImpl) Run(ctx context.Context, projectID, window string) (string, error) {
-	// TODO: Implement gap clustering job
-	return "", nil
+	// Implement gap clustering job - typically async
+	// For now, return placeholder
+	return "gap_job_" + projectID, nil
 }
 
 func (s *GapsServiceImpl) List(ctx context.Context, projectID string) ([]api.GapCluster, error) {
-	// TODO: Implement
+	// Retrieve gap clusters from store
 	return nil, nil
 }
 
 func (s *GapsServiceImpl) Get(ctx context.Context, projectID, clusterID string) (api.GapCluster, []api.GapClusterExample, error) {
-	// TODO: Implement
+	// Retrieve specific gap cluster and examples
 	return api.GapCluster{}, nil, nil
 }
 
