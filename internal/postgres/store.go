@@ -71,6 +71,13 @@ func (s *Store) Close() error {
 	return nil
 }
 
+// Pool exposes the underlying pgx pool for advanced queries (e.g., pgvector search).
+// This method allows internal packages to perform specialized SQL without expanding
+// the storage interfaces.
+func (s *Store) Pool() *pgxpool.Pool {
+	return s.pool
+}
+
 // ProjectRepo implementation.
 type ProjectRepo struct {
 	pool *pgxpool.Pool

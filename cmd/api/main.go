@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 
 	"cgap/api"
+	"cgap/internal/embedding"
 	"cgap/internal/llm"
 	"cgap/internal/meilisearch"
 	"cgap/internal/postgres"
@@ -87,16 +88,20 @@ func main() {
 	}
 
 	var searchClient service.Search
+
+	// Initialize embedder for semantic search (used by pgvector provider)
+	embedder := embedding.NewOpenAIEmbedder(openaiKey, os.Getenv("EMBEDDING_MODEL"))
+
 	switch searchStrategy {
 	case "pgvector":
-		searchClient = search.NewPGVector(store)
+		searchClient = search.NewPGVector(store, embedder)
 	case "meilisearch":
 		searchClient = meiliClient
 	case "hybrid":
-		searchClient = search.NewHybrid(search.NewPGVector(store), meiliClient)
+		searchClient = search.NewHybrid(search.NewPGVector(store, embedder), meiliClient)
 	default:
 		log.Printf("Unknown SEARCH_PROVIDER '%s', defaulting to hybrid", searchStrategy)
-		searchClient = search.NewHybrid(search.NewPGVector(store), meiliClient)
+		searchClient = search.NewHybrid(search.NewPGVector(store, embedder), meiliClient)
 	}
 
 	// Initialize Redis client

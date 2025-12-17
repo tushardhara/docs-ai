@@ -1,12 +1,12 @@
 package ingestion
 
 import (
-"context"
-"fmt"
-"net/http"
-"strings"
+	"context"
+	"fmt"
+	"net/http"
+	"strings"
 
-"cgap/internal/model"
+	"cgap/internal/model"
 )
 
 // Crawler fetches documents from various sources.
@@ -98,11 +98,11 @@ func (c *SimpleChunker) Chunk(ctx context.Context, doc *model.Document, content 
 	for i, line := range lines {
 		if strings.TrimSpace(line) != "" {
 			chunks = append(chunks, Chunk{
-Ord:         i,
-Text:        line,
-TokenCount:  len(strings.Fields(line)),
-SectionPath: "root",
-})
+				Ord:         i,
+				Text:        line,
+				TokenCount:  len(strings.Fields(line)),
+				SectionPath: "root",
+			})
 		}
 	}
 	return chunks, nil
@@ -110,18 +110,18 @@ SectionPath: "root",
 
 // IngestionPipeline orchestrates crawl -> chunk -> embed -> index.
 type IngestionPipeline struct {
-	crawler   Crawler
-	chunker   Chunker
-	embedder  Embedder
-	indexer   Indexer
+	crawler  Crawler
+	chunker  Chunker
+	embedder Embedder
+	indexer  Indexer
 }
 
 func NewIngestionPipeline(crawler Crawler, chunker Chunker, embedder Embedder, indexer Indexer) *IngestionPipeline {
 	return &IngestionPipeline{
-		crawler:   crawler,
-		chunker:   chunker,
-		embedder:  embedder,
-		indexer:   indexer,
+		crawler:  crawler,
+		chunker:  chunker,
+		embedder: embedder,
+		indexer:  indexer,
 	}
 }
 

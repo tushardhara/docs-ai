@@ -1,9 +1,9 @@
 package storage
 
 import (
-"context"
+	"context"
 
-"cgap/internal/model"
+	"cgap/internal/model"
 )
 
 // Database repository interfaces decoupled from implementation.
