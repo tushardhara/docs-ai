@@ -149,6 +149,21 @@ type IngestResponse struct {
 	ProjectID string `json:"project_id"`
 }
 
+// Dev-only seeding endpoint to insert a document, chunk and embedding
+type SeedRequest struct {
+	ProjectID string `json:"project_id"` // slug or UUID
+	URI       string `json:"uri"`
+	Title     string `json:"title"`
+	Text      string `json:"text"`
+}
+
+type SeedResponse struct {
+	ProjectID  string `json:"project_id"`
+	DocumentID string `json:"document_id"`
+	ChunkID    string `json:"chunk_id"`
+	Status     string `json:"status"`
+}
+
 type AnalyticsResponse struct {
 	ProjectID   string           `json:"project_id"`
 	Summary     AnalyticsSummary `json:"summary"`

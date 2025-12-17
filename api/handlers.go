@@ -1,10 +1,16 @@
 package api
 
 import (
+	"cgap/internal/embedding"
 	"context"
 	"time"
 
+	"os"
+	"regexp"
+
 	"github.com/gofiber/fiber/v3"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pgvector/pgvector-go"
 	"github.com/redis/go-redis/v9"
 )
 
@@ -74,6 +80,11 @@ func SearchHandler(c fiber.Ctx) error {
 	hits, err := services.Search.Search(context.Background(), req.ProjectID, req.Query, req.Limit, req.Filters)
 	if err != nil {
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+
+	// Ensure empty array instead of null in JSON
+	if hits == nil {
+		hits = []SearchHit{}
 	}
 
 	return c.Status(fiber.StatusOK).JSON(SearchResponse{
@@ -146,6 +157,121 @@ func IngestHandler(c fiber.Ctx) error {
 		JobID:     "job_" + req.ProjectID,
 		Status:    "queued",
 		ProjectID: req.ProjectID,
+	})
+}
+
+// DevSeedHandler handles POST /v1/dev/seed to insert a document, chunk, and embedding
+func DevSeedHandler(c fiber.Ctx) error {
+	var req SeedRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+	if req.ProjectID == "" || req.URI == "" || req.Text == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id, uri and text required"})
+	}
+
+	dbURL := os.Getenv("DATABASE_URL")
+	if dbURL == "" {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "DATABASE_URL not set"})
+	}
+	pool, err := pgxpool.New(context.Background(), dbURL)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "db connect failed"})
+	}
+	defer pool.Close()
+
+	// Resolve project slug -> UUID if needed
+	pid := req.ProjectID
+	if !looksLikeUUID(req.ProjectID) {
+		if err := pool.QueryRow(context.Background(), `SELECT id FROM projects WHERE slug = $1`, req.ProjectID).Scan(&pid); err != nil {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "project not found"})
+		}
+	}
+
+	// Upsert document
+	var docID string
+	if err := pool.QueryRow(context.Background(), `
+		INSERT INTO documents (project_id, uri, title)
+		VALUES ($1, $2, COALESCE($3, 'Untitled'))
+		ON CONFLICT (project_id, uri) DO UPDATE SET title = EXCLUDED.title
+		RETURNING id
+	`, pid, req.URI, req.Title).Scan(&docID); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "insert document failed"})
+	}
+
+	// Insert chunk
+	var chunkID string
+	if err := pool.QueryRow(context.Background(), `
+		INSERT INTO chunks (document_id, ord, text)
+		VALUES ($1, 0, $2)
+		RETURNING id
+	`, docID, req.Text).Scan(&chunkID); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "insert chunk failed"})
+	}
+
+	// Build embedder from env similar to main
+	embProvider := os.Getenv("EMBEDDING_PROVIDER")
+	if embProvider == "" {
+		embProvider = "openai"
+	}
+	var embVec []float32
+	{
+		// Create embedder per provider
+		switch embProvider {
+		case "openai":
+			apiKey := os.Getenv("OPENAI_API_KEY")
+			if apiKey == "" {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "OPENAI_API_KEY not set"})
+			}
+			emb := embedding.NewOpenAIEmbedder(apiKey, os.Getenv("EMBEDDING_MODEL"))
+			v, err := emb.Embed(context.Background(), req.Text)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "embedding failed"})
+			}
+			embVec = v
+		case "google":
+			apiKey := os.Getenv("GEMINI_API_KEY")
+			if apiKey == "" {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "GEMINI_API_KEY not set"})
+			}
+			emb := embedding.NewGoogleEmbedder(apiKey, os.Getenv("EMBEDDING_MODEL"))
+			v, err := emb.Embed(context.Background(), req.Text)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "embedding failed"})
+			}
+			embVec = v
+		case "http":
+			emb := embedding.NewHTTPEmbedder(os.Getenv("EMBEDDING_ENDPOINT"), os.Getenv("EMBEDDING_MODEL"), os.Getenv("EMBEDDING_API_KEY"), os.Getenv("EMBEDDING_AUTH_HEADER"))
+			v, err := emb.Embed(context.Background(), req.Text)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "embedding failed"})
+			}
+			embVec = v
+		case "mock":
+			emb := embedding.NewMockEmbedder(768)
+			v, err := emb.Embed(context.Background(), req.Text)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "embedding failed"})
+			}
+			embVec = v
+		default:
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "unknown EMBEDDING_PROVIDER"})
+		}
+	}
+
+	// Insert embedding using pgvector-go for correct type
+	if _, err := pool.Exec(context.Background(), `
+		INSERT INTO chunk_embeddings (chunk_id, embedding) VALUES ($1, $2)
+		ON CONFLICT (chunk_id) DO UPDATE SET embedding = EXCLUDED.embedding
+	`, chunkID, pgvector.NewVector(embVec)); err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "insert embedding failed"})
+	}
+
+	return c.Status(fiber.StatusOK).JSON(SeedResponse{
+		ProjectID:  pid,
+		DocumentID: docID,
+		ChunkID:    chunkID,
+		Status:     "seeded",
 	})
 }
 
@@ -257,6 +383,8 @@ func RegisterRoutesWithServices(app *fiber.App, svc *Services, deps *HealthDeps)
 
 	// Ingest
 	app.Post("/v1/ingest", IngestHandler)
+	// Dev seed
+	app.Post("/v1/dev/seed", DevSeedHandler)
 
 	// Analytics
 	app.Get("/v1/analytics/:project_id", AnalyticsHandler)
@@ -264,3 +392,7 @@ func RegisterRoutesWithServices(app *fiber.App, svc *Services, deps *HealthDeps)
 	// Gaps
 	app.Get("/v1/gaps/:project_id", GapsHandler)
 }
+
+var uuidReHandlers = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
+
+func looksLikeUUID(s string) bool { return uuidReHandlers.MatchString(s) }
