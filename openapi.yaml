@@ -79,6 +79,102 @@ components:
         recommendation: { type: string }
         size: { type: integer }
         status: { type: string, enum: ["open","in_review","done"] }
+    IngestRequest:
+      type: object
+      required: [project_id, source]
+      properties:
+        project_id: { type: string }
+        fail_fast:
+          type: boolean
+          description: Cancel remaining work on first error and mark job failed
+          default: false
+        source:
+          $ref: '#/components/schemas/SourceSpec'
+    SourceSpec:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          enum: [url, crawl, document, image, youtube]
+        url:
+          type: string
+          description: Direct URL when type=url
+        crawl:
+          $ref: '#/components/schemas/CrawlSpec'
+        files:
+          $ref: '#/components/schemas/FileSpec'
+    CrawlSpec:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [single, sitemap, crawl]
+          default: crawl
+        start_url:
+          type: string
+          description: Starting URL for single/crawl modes
+        sitemap_url:
+          type: string
+          description: Sitemap URL for sitemap mode
+        scope:
+          type: string
+          enum: [host, domain, prefix]
+          default: host
+        max_depth:
+          type: integer
+          minimum: 0
+          default: 2
+        max_pages:
+          type: integer
+          minimum: 1
+          default: 200
+        respect_robots:
+          type: boolean
+          default: true
+        concurrency:
+          type: integer
+          minimum: 1
+          maximum: 16
+          default: 4
+        delay_ms:
+          type: integer
+          minimum: 0
+          description: Politeness delay between requests per worker
+          default: 0
+        allow:
+          type: array
+          items: { type: string }
+        deny:
+          type: array
+          items: { type: string }
+    FileSpec:
+      type: object
+      properties:
+        urls:
+          type: array
+          items: { type: string }
+        format:
+          type: string
+          description: Document format hint, e.g. markdown, txt, pdf
+    IngestQueuedResponse:
+      type: object
+      properties:
+        job_id: { type: string }
+        status: { type: string, enum: [queued], default: queued }
+        project_id: { type: string }
+    IngestStatusResponse:
+      type: object
+      properties:
+        job_id: { type: string }
+        project_id: { type: string }
+        status: { type: string, enum: [queued, running, completed, failed] }
+        processed: { type: integer }
+        total: { type: integer }
+        error: { type: string }
+        started_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time }
 paths:
   /v1/chat:
     post:
@@ -246,8 +342,17 @@ paths:
       summary: Trigger ingest or file upload
       security:
         - apiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/IngestRequest' }
       responses:
-        '202': { description: Accepted }
+        '202':
+          description: Accepted
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestQueuedResponse' }
   /v1/ingest/{job_id}:
     get:
       summary: Ingest job status
@@ -259,7 +364,11 @@ paths:
           required: true
           schema: { type: string }
       responses:
-        '200': { description: OK }
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestStatusResponse' }
   /v1/analytics/summary:
     get:
       summary: Aggregate metrics

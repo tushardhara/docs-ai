@@ -312,6 +312,38 @@ The worker will:
 5. Store chunks in PostgreSQL
 6. Report completion via webhook
 
+Check job status:
+```bash
+curl http://localhost:8080/v1/ingest/<job_id>
+# {
+#   "job_id": "job_proj_123_1734480000000000000",
+#   "project_id": "proj_123",
+#   "status": "running",
+#   "processed": 3,
+#   "total": 10,
+#   "started_at": "2025-12-18T10:00:00Z",
+#   "updated_at": "2025-12-18T10:01:02Z",
+#   "finished_at": ""
+# }
+```
+
+If a job fails (e.g., network/parse error), status includes an error message and timestamps:
+
+```bash
+curl http://localhost:8080/v1/ingest/<job_id>
+# {
+#   "job_id": "job_proj_123_1734480000000000000",
+#   "project_id": "proj_123",
+#   "status": "failed",
+#   "processed": 2,
+#   "total": 10,
+#   "error": "ingest: error processing https://docs.example.com/guide: 502 Bad Gateway",
+#   "started_at": "2025-12-18T10:00:00Z",
+#   "updated_at": "2025-12-18T10:00:45Z",
+#   "finished_at": "2025-12-18T10:00:45Z"
+# }
+```
+
 ### Ingest Scenarios
 
 - Single page (no traversal):
@@ -362,6 +394,33 @@ Notes:
 - `scope`: `host` (default), `domain`, or `prefix` to constrain URLs.
 - `allow`/`deny`: add patterns under `crawl` to include/exclude paths.
 - `concurrency`, `delay_ms`: tune politeness.
+- `fail_fast` (boolean): cancel remaining work on first error; the job will be marked `failed` with an `error` message.
+
+Fail-fast and concurrency example:
+
+```bash
+curl -X POST http://localhost:8080/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "proj_123",
+    "fail_fast": true,
+    "source": {
+      "type": "crawl",
+      "crawl": {
+        "mode": "crawl",
+        "start_url": "https://docs.example.com",
+        "scope": "host",
+        "max_depth": 2,
+        "max_pages": 100,
+        "respect_robots": true,
+        "concurrency": 6,
+        "delay_ms": 250,
+        "allow": ["/docs/"],
+        "deny": ["/private/"]
+      }
+    }
+  }'
+```
 
 - Images with OCR:
 ```bash
@@ -600,16 +659,35 @@ echo $LLM_API_KEY
 
 ## Roadmap
 
-See [PRD.md](./PRD.md) for the full 8-phase roadmap:
-- **Phase 0**: Foundation (core Q&A, search, deflection)
-- **Phase 1**: Advanced deflection (automation, webhooks)
-- **Phase 2**: Internal assistant (Slack, Teams integration)
-- **Phase 3**: Coverage analytics (gap detection, reporting)
-- **Phase 4**: Fine-tuning (custom embeddings, reranking)
-- **Phase 5**: Scalability (multi-region, caching)
-- **Phase 6**: Observability (OpenTelemetry, analytics)
-- **Phase 7**: Enterprise (SSO, audit, RBAC)
-- **Phase 8**: MCP integration (Claude Desktop, IDE plugins)
+See [PRD.md](./PRD.md) for details. High-level phases we’ll execute one-by-one:
+
+1. Phase 0 — Foundation
+  - Core Q&A with citations, hybrid search (pgvector + Meilisearch), basic deflection API
+  - Minimal ingest (URL/docs), seed tooling, integration tests, and docs
+
+2. Phase 1 — Advanced Deflection
+  - Automated suggestions, webhook callbacks, deflection scoring, feedback loops, ticketing integrations
+
+3. Phase 2 — Internal Assistant
+  - Slack/Teams bots, auth, thread continuity, slash commands, context routing
+
+4. Phase 3 — Coverage Analytics
+  - Gap detection pipeline, trending topics, unresolved clusters, dashboards and exports
+
+5. Phase 4 — Fine-tuning & Reranking
+  - Custom domain embeddings, cross-encoder reranker, A/B testing and offline eval harness
+
+6. Phase 5 — Scalability & Performance
+  - Multi-region readiness, async caching, vector index tuning (IVFFLAT/HNSW), background maintenance
+
+7. Phase 6 — Observability
+  - OpenTelemetry tracing, structured logs, metrics, SLOs, end-to-end trace across API/Worker
+
+8. Phase 7 — Enterprise
+  - SSO (SAML/OIDC), RBAC, audit logs, data retention, org/project boundaries
+
+9. Phase 8 — MCP Integration
+  - Model Context Protocol server and IDE/desktop integrations (e.g., IDE plugins)
 
 ## Contributing
 

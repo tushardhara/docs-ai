@@ -4,10 +4,13 @@ import (
 	"cgap/internal/embedding"
 	"cgap/internal/queue"
 	"context"
+	"fmt"
 	"time"
 
 	"os"
 	"regexp"
+
+	"strconv"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -231,9 +234,10 @@ func IngestHandler(c fiber.Ctx) error {
 		Source:         req.Source,
 		ChunkStrategy:  req.ChunkStrategy,
 		ChunkSizeToken: req.ChunkSizeToken,
+		FailFast:       req.FailFast,
 	}
 
-	jobID := "job_" + req.ProjectID
+	jobID := fmt.Sprintf("job_%s_%d", req.ProjectID, time.Now().UnixNano())
 
 	// Try to enqueue via Redis producer if wired
 	if services != nil && services.Queue != nil {
@@ -246,12 +250,85 @@ func IngestHandler(c fiber.Ctx) error {
 		}
 	}
 
+	// Initialize job status in Redis (best-effort)
+	if redisURL := os.Getenv("REDIS_URL"); redisURL != "" {
+		if opts, err := redis.ParseURL(redisURL); err == nil {
+			rdb := redis.NewClient(opts)
+			defer rdb.Close()
+			key := "cgap:job:" + jobID
+			now := time.Now().UTC().Format(time.RFC3339)
+			_ = rdb.HSet(context.Background(), key, map[string]any{
+				"job_id":     jobID,
+				"project_id": req.ProjectID,
+				"status":     "queued",
+				"processed":  0,
+				"total":      0,
+				"started_at": now,
+				"error":      "",
+				"updated_at": now,
+			}).Err()
+			// TTL to avoid leaking forever (24h)
+			_ = rdb.Expire(context.Background(), key, 24*time.Hour).Err()
+		}
+	}
+
 	// Return accepted response
 	return c.Status(fiber.StatusAccepted).JSON(IngestResponse{
 		JobID:     jobID,
 		Status:    "queued",
 		ProjectID: req.ProjectID,
 	})
+}
+
+// IngestStatusHandler handles GET /v1/ingest/:job_id
+func IngestStatusHandler(c fiber.Ctx) error {
+	jobID := c.Params("job_id")
+	if jobID == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "job_id required"})
+	}
+
+	redisURL := os.Getenv("REDIS_URL")
+	if redisURL == "" {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "REDIS_URL not set"})
+	}
+	opts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		// fallback: treat as host:port
+		opts = &redis.Options{Addr: redisURL}
+	}
+	rdb := redis.NewClient(opts)
+	defer rdb.Close()
+
+	key := "cgap:job:" + jobID
+	m, err := rdb.HGetAll(context.Background(), key).Result()
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "redis error"})
+	}
+	if len(m) == 0 {
+		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "job not found"})
+	}
+
+	// Map fields into response
+	resp := IngestStatusResponse{
+		JobID:      m["job_id"],
+		ProjectID:  m["project_id"],
+		Status:     m["status"],
+		StartedAt:  m["started_at"],
+		FinishedAt: m["finished_at"],
+		Error:      m["error"],
+	}
+	if v, ok := m["processed"]; ok {
+		if n, perr := strconv.Atoi(v); perr == nil {
+			resp.Processed = n
+		}
+	}
+	if v, ok := m["total"]; ok {
+		if n, perr := strconv.Atoi(v); perr == nil {
+			resp.Total = n
+		}
+	}
+
+	return c.Status(fiber.StatusOK).JSON(resp)
 }
 
 // DevSeedHandler handles POST /v1/dev/seed to insert a document, chunk, and embedding
@@ -477,6 +554,7 @@ func RegisterRoutesWithServices(app *fiber.App, svc *Services, deps *HealthDeps)
 
 	// Ingest
 	app.Post("/v1/ingest", IngestHandler)
+	app.Get("/v1/ingest/:job_id", IngestStatusHandler)
 	// Dev seed
 	app.Post("/v1/dev/seed", DevSeedHandler)
 

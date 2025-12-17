@@ -141,12 +141,25 @@ type IngestRequest struct {
 	Source         SourceSpec `json:"source"`                   // {"type": "url"|"crawl"|"github"|"openapi"|"slack"|"discord"|"upload", ...}
 	ChunkStrategy  string     `json:"chunk_strategy,omitempty"` // "semantic", "fixed", etc.
 	ChunkSizeToken int        `json:"chunk_size_token,omitempty"`
+	FailFast       bool       `json:"fail_fast,omitempty"` // If true, stop on first URL error
 }
 
 type IngestResponse struct {
 	JobID     string `json:"job_id"`
 	Status    string `json:"status"` // "queued", "processing", "completed"
 	ProjectID string `json:"project_id"`
+}
+
+// IngestStatusResponse represents the current status of an ingest job
+type IngestStatusResponse struct {
+	JobID      string `json:"job_id"`
+	ProjectID  string `json:"project_id"`
+	Status     string `json:"status"`      // queued|running|completed|failed
+	Processed  int    `json:"processed"`   // processed units (pages or chunks)
+	Total      int    `json:"total"`       // total units if known
+	StartedAt  string `json:"started_at"`  // RFC3339
+	FinishedAt string `json:"finished_at"` // RFC3339
+	Error      string `json:"error,omitempty"`
 }
 
 // SourceSpec describes an ingestion source.
@@ -170,6 +183,7 @@ type IngestTaskPayload struct {
 	Source         SourceSpec `json:"source"`
 	ChunkStrategy  string     `json:"chunk_strategy,omitempty"`
 	ChunkSizeToken int        `json:"chunk_size_token,omitempty"`
+	FailFast       bool       `json:"fail_fast,omitempty"`
 }
 
 // CrawlSpec describes how to fetch web content for web sources.
