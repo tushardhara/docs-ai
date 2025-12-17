@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"os"
 	"os/signal"
@@ -28,6 +29,9 @@ func main() {
 	if port == "" {
 		port = "8080"
 	}
+
+	// Print custom startup banner early
+	printCGAPBanner(port)
 
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
@@ -193,7 +197,6 @@ func main() {
 
 	// Start server
 	go func() {
-		log.Printf("Server listening on :%s", port)
 		if err := app.Listen(":" + port); err != nil {
 			log.Fatalf("Server error: %v", err)
 		}
@@ -211,4 +214,26 @@ func main() {
 	}
 
 	log.Println("API server stopped")
+}
+
+// printCGAPBanner prints the cgap startup banner with colors.
+func printCGAPBanner(port string) {
+	const (
+		colorCyan  = "\033[36m"
+		colorReset = "\033[0m"
+		colorBold  = "\033[1m"
+	)
+	fmt.Printf("%s%s", colorCyan, colorBold)
+	fmt.Println(`
+   _____ _____ _____   ____
+  / ____/ ____|  __ \ / __ \
+ | |   | |  __| |__) | |  | |
+ | |   | | |_ |  _  /| |  | |
+ | |___| |__| | | \ \| |__| |
+  \_____\_____|_|  \_\\____/
+`)
+	fmt.Printf("%s%s", colorReset, colorCyan)
+	fmt.Printf("  Documentation AI Assistant | v0.1.0\n")
+	fmt.Printf("  Server listening on http://localhost:%s\n", port)
+	fmt.Printf("%s\n", colorReset)
 }
