@@ -33,3 +33,4 @@ dist/
 tmp/
 temp/
 .env*
+__debug_*

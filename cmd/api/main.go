@@ -45,13 +45,13 @@ func main() {
 	}
 
 	openaiKey := os.Getenv("OPENAI_API_KEY")
-	if openaiKey == "" {
-		log.Fatal("OPENAI_API_KEY environment variable not set")
-	}
+	geminiKey := os.Getenv("GEMINI_API_KEY")
+	anthropicKey := os.Getenv("ANTHROPIC_API_KEY")
+	grokKey := os.Getenv("XAI_API_KEY")
 
 	redisURL := os.Getenv("REDIS_URL")
 	if redisURL == "" {
-		redisURL = "localhost:6379"
+		redisURL = "redis://localhost:6379/0"
 	}
 
 	// Initialize PostgreSQL storage with pgx
@@ -72,9 +72,36 @@ func main() {
 
 	llmModel := os.Getenv("LLM_MODEL")
 
+	llmAPIKey := openaiKey
+	switch llmProvider {
+	case "openai":
+		if llmAPIKey == "" {
+			log.Fatal("OPENAI_API_KEY environment variable not set")
+		}
+	case "google":
+		llmAPIKey = geminiKey
+		if llmAPIKey == "" {
+			log.Fatal("GEMINI_API_KEY environment variable not set")
+		}
+	case "anthropic":
+		llmAPIKey = anthropicKey
+		if llmAPIKey == "" {
+			log.Fatal("ANTHROPIC_API_KEY environment variable not set")
+		}
+	case "grok":
+		llmAPIKey = grokKey
+		if llmAPIKey == "" {
+			log.Fatal("XAI_API_KEY environment variable not set")
+		}
+	case "mock":
+		llmAPIKey = ""
+	default:
+		log.Fatalf("Unknown LLM_PROVIDER '%s'", llmProvider)
+	}
+
 	llmClient, err := llm.New(llm.ProviderConfig{
 		Provider: llmProvider,
-		APIKey:   openaiKey,
+		APIKey:   llmAPIKey,
 		Model:    llmModel,
 	})
 	if err != nil {
@@ -97,15 +124,24 @@ func main() {
 	var embedder embedding.Embedder
 	switch embProvider {
 	case "openai":
+		if openaiKey == "" {
+			log.Fatal("OPENAI_API_KEY environment variable not set for embeddings")
+		}
 		embedder = embedding.NewOpenAIEmbedder(openaiKey, os.Getenv("EMBEDDING_MODEL"))
 	case "google":
-		embedder = embedding.NewGoogleEmbedder(os.Getenv("GEMINI_API_KEY"), os.Getenv("EMBEDDING_MODEL"))
+		if geminiKey == "" {
+			log.Fatal("GEMINI_API_KEY environment variable not set for embeddings")
+		}
+		embedder = embedding.NewGoogleEmbedder(geminiKey, os.Getenv("EMBEDDING_MODEL"))
 	case "http":
 		embedder = embedding.NewHTTPEmbedder(os.Getenv("EMBEDDING_ENDPOINT"), os.Getenv("EMBEDDING_MODEL"), os.Getenv("EMBEDDING_API_KEY"), os.Getenv("EMBEDDING_AUTH_HEADER"))
 	case "mock":
 		embedder = embedding.NewMockEmbedder(1536)
 	default:
 		log.Printf("Unknown EMBEDDING_PROVIDER '%s', defaulting to openai", embProvider)
+		if openaiKey == "" {
+			log.Fatal("OPENAI_API_KEY environment variable not set for embeddings")
+		}
 		embedder = embedding.NewOpenAIEmbedder(openaiKey, os.Getenv("EMBEDDING_MODEL"))
 	}
 
@@ -121,10 +157,12 @@ func main() {
 		searchClient = search.NewHybrid(search.NewPGVector(store, embedder), meiliClient)
 	}
 
-	// Initialize Redis client
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379", // Parse from redisURL if needed
-	})
+	// Initialize Redis client (URL or host:port)
+	redisOpts, err := redis.ParseURL(redisURL)
+	if err != nil {
+		redisOpts = &redis.Options{Addr: redisURL}
+	}
+	redisClient := redis.NewClient(redisOpts)
 	defer redisClient.Close()
 
 	// Wire up service implementations
@@ -139,7 +177,7 @@ func main() {
 		AppName: "cgap",
 	})
 
-	// Register handlers with injected services
+	// Register handlers with injected services and health dependencies
 	api.RegisterRoutesWithServices(app, &api.Services{
 		Chat:      chatService,
 		Search:    searchService,
@@ -147,6 +185,10 @@ func main() {
 		Analytics: analyticsService,
 		Gaps:      gapsService,
 		Queue:     queue.NewProducer(redisClient),
+	}, &api.HealthDeps{
+		DB:    store.Pool(),
+		Redis: redisClient,
+		Meili: meiliClient,
 	})
 
 	// Start server

@@ -165,7 +165,7 @@ CREATE INDEX ON gap_candidates USING ivfflat (question_embedding vector_cosine_o
 CREATE TABLE gap_clusters (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),
   project_id uuid REFERENCES projects(id) ON DELETE CASCADE,
-  window text CHECK (window IN ('7d','30d','90d')),
+  time_window text CHECK (time_window IN ('7d','30d','90d')),
   label text,
   summary text,
   recommendation text,
@@ -173,7 +173,7 @@ CREATE TABLE gap_clusters (
   status text CHECK (status IN ('open','in_review','done')) DEFAULT 'open',
   created_at timestamptz DEFAULT now()
 );
-CREATE INDEX gap_clusters_project_window ON gap_clusters(project_id, window);
+CREATE INDEX gap_clusters_project_time_window ON gap_clusters(project_id, time_window);
 
 CREATE TABLE gap_cluster_examples (
   id uuid PRIMARY KEY DEFAULT uuid_generate_v4(),

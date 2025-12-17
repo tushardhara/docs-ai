@@ -123,3 +123,22 @@ func (c *Client) Search(ctx context.Context, index, query string, topK int, filt
 
 	return results, nil
 }
+
+// Health checks Meilisearch health endpoint.
+func (c *Client) Health(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", fmt.Sprintf("%s/health", c.baseURL), nil)
+	if err != nil {
+		return fmt.Errorf("build health request: %w", err)
+	}
+
+	resp, err := c.http.Do(req)
+	if err != nil {
+		return fmt.Errorf("meilisearch health request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("meilisearch health status %d", resp.StatusCode)
+	}
+	return nil
+}

@@ -566,9 +566,9 @@ func (r *GapRepo) CreateCandidate(ctx context.Context, gc *model.GapCandidate) e
 
 func (r *GapRepo) CreateCluster(ctx context.Context, gc *model.GapCluster) error {
 	const query = `
-		INSERT INTO gap_clusters (id, project_id, window, label, summary, recommendation, size, status, created_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-	`
+			INSERT INTO gap_clusters (id, project_id, time_window, label, summary, recommendation, size, status, created_at)
+			VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+		`
 	_, err := r.pool.Exec(ctx, query, gc.ID, gc.ProjectID, gc.Window, gc.Label, gc.Summary, gc.Recommendation, gc.Size, gc.Status, gc.CreatedAt)
 	if err != nil {
 		return fmt.Errorf("failed to create gap cluster: %w", err)
@@ -590,11 +590,11 @@ func (r *GapRepo) CreateExample(ctx context.Context, gce *model.GapClusterExampl
 
 func (r *GapRepo) ListClusters(ctx context.Context, projectID, window string) ([]*model.GapCluster, error) {
 	const query = `
-		SELECT id, project_id, window, label, summary, recommendation, size, status, created_at
-		FROM gap_clusters
-		WHERE project_id = $1 AND window = $2
-		ORDER BY size DESC
-	`
+			SELECT id, project_id, time_window AS window, label, summary, recommendation, size, status, created_at
+			FROM gap_clusters
+			WHERE project_id = $1 AND time_window = $2
+			ORDER BY size DESC
+		`
 	rows, err := r.pool.Query(ctx, query, projectID, window)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list gap clusters: %w", err)
@@ -620,9 +620,9 @@ func (r *GapRepo) ListClusters(ctx context.Context, projectID, window string) ([
 
 func (r *GapRepo) GetClusterDetail(ctx context.Context, clusterID string) (*model.GapCluster, []*model.GapClusterExample, error) {
 	const queryCluster = `
-		SELECT id, project_id, window, label, summary, recommendation, size, status, created_at
-		FROM gap_clusters WHERE id = $1
-	`
+			SELECT id, project_id, time_window AS window, label, summary, recommendation, size, status, created_at
+			FROM gap_clusters WHERE id = $1
+		`
 	row := r.pool.QueryRow(ctx, queryCluster, clusterID)
 	gc := &model.GapCluster{}
 	err := row.Scan(&gc.ID, &gc.ProjectID, &gc.Window, &gc.Label, &gc.Summary, &gc.Recommendation, &gc.Size, &gc.Status, &gc.CreatedAt)

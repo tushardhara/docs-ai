@@ -2,11 +2,34 @@ package api
 
 import (
 	"context"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/redis/go-redis/v9"
 )
 
 var services *Services
+var healthDeps *HealthDeps
+
+// HealthDeps holds upstream dependencies for health checks.
+type HealthDeps struct {
+	DB    DBPinger
+	Redis RedisPinger
+	Meili MeiliChecker
+}
+
+// Interfaces for health checks to keep API decoupled from concrete types.
+type DBPinger interface {
+	Ping(ctx context.Context) error
+}
+
+type RedisPinger interface {
+	Ping(ctx context.Context) *redis.StatusCmd
+}
+
+type MeiliChecker interface {
+	Health(ctx context.Context) error
+}
 
 // ChatHandler handles POST /v1/chat
 func ChatHandler(c fiber.Ctx) error {
@@ -166,17 +189,58 @@ func GapsHandler(c fiber.Ctx) error {
 
 // HealthHandler handles GET /health
 func HealthHandler(c fiber.Ctx) error {
-	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "ok"})
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	status := fiber.Map{
+		"status": "ok",
+	}
+	unhealthy := false
+
+	if healthDeps != nil && healthDeps.DB != nil {
+		if err := healthDeps.DB.Ping(ctx); err != nil {
+			status["db"] = err.Error()
+			unhealthy = true
+		} else {
+			status["db"] = "ok"
+		}
+	}
+
+	if healthDeps != nil && healthDeps.Redis != nil {
+		if err := healthDeps.Redis.Ping(ctx).Err(); err != nil {
+			status["redis"] = err.Error()
+			unhealthy = true
+		} else {
+			status["redis"] = "ok"
+		}
+	}
+
+	if healthDeps != nil && healthDeps.Meili != nil {
+		if err := healthDeps.Meili.Health(ctx); err != nil {
+			status["meilisearch"] = err.Error()
+			unhealthy = true
+		} else {
+			status["meilisearch"] = "ok"
+		}
+	}
+
+	if unhealthy {
+		status["status"] = "degraded"
+		return c.Status(fiber.StatusServiceUnavailable).JSON(status)
+	}
+
+	return c.Status(fiber.StatusOK).JSON(status)
 }
 
 // RegisterRoutes registers all HTTP handlers with Fiber (deprecated).
 func RegisterRoutes(app *fiber.App) {
-	RegisterRoutesWithServices(app, &Services{})
+	RegisterRoutesWithServices(app, &Services{}, nil)
 }
 
 // RegisterRoutesWithServices registers all HTTP handlers with Fiber and injects services.
-func RegisterRoutesWithServices(app *fiber.App, svc *Services) {
+func RegisterRoutesWithServices(app *fiber.App, svc *Services, deps *HealthDeps) {
 	services = svc
+	healthDeps = deps
 
 	// Health
 	app.Get("/health", HealthHandler)

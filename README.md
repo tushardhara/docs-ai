@@ -340,6 +340,14 @@ cgap/
 go test ./...
 ```
 
+- Local stack (docker-compose.local.yml):
+```bash
+docker compose -f docker-compose.local.yml up -d
+# services: postgres:5432, meilisearch:7700, redis:6379
+# use .env for app envs; DATABASE_URL example:
+# postgres://cgap:cgap_dev_password@localhost:5432/cgap?sslmode=disable
+```
+
 - Build binaries:
 ```bash
 go build -o bin/api cmd/api/main.go
