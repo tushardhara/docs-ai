@@ -15,6 +15,7 @@ import (
 	"cgap/internal/meilisearch"
 	"cgap/internal/postgres"
 	"cgap/internal/queue"
+	"cgap/internal/search"
 	"cgap/internal/service"
 )
 
@@ -59,8 +60,8 @@ func main() {
 	}
 	defer store.Close()
 
-	// Initialize Meilisearch client
-	searchClient := meilisearch.New(meiliURL, meiliKey)
+	// Initialize Meilisearch client (full-text provider)
+	meiliClient := meilisearch.New(meiliURL, meiliKey)
 
 	// Initialize LLM client with provider selection
 	llmProvider := os.Getenv("LLM_PROVIDER")
@@ -77,6 +78,25 @@ func main() {
 	})
 	if err != nil {
 		log.Fatalf("Failed to initialize LLM client: %v", err)
+	}
+
+	// Initialize Search provider by strategy
+	searchStrategy := os.Getenv("SEARCH_PROVIDER")
+	if searchStrategy == "" {
+		searchStrategy = "hybrid"
+	}
+
+	var searchClient service.Search
+	switch searchStrategy {
+	case "pgvector":
+		searchClient = search.NewPGVector(store)
+	case "meilisearch":
+		searchClient = meiliClient
+	case "hybrid":
+		searchClient = search.NewHybrid(search.NewPGVector(store), meiliClient)
+	default:
+		log.Printf("Unknown SEARCH_PROVIDER '%s', defaulting to hybrid", searchStrategy)
+		searchClient = search.NewHybrid(search.NewPGVector(store), meiliClient)
 	}
 
 	// Initialize Redis client

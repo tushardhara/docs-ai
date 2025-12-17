@@ -382,6 +382,7 @@ goose -dir migrations postgres "$DATABASE_URL" down
 | `LLM_PROVIDER` | openai | LLM provider (openai or anthropic) |
 | `LLM_API_KEY` | - | LLM API key |
 | `LLM_MODEL` | gpt-4-turbo | LLM model identifier |
+| `SEARCH_PROVIDER` | hybrid | Search provider: `pgvector`, `meilisearch`, or `hybrid` |
 | `PORT` | 8080 | API server port |
 | `WORKER_PORT` | 8081 | Worker server port |
 | `LOG_LEVEL` | info | Log level (debug, info, warn, error) |
