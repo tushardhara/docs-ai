@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -28,6 +29,9 @@ import (
 )
 
 func main() {
+	// Print custom startup banner first
+	printCGAPBanner("worker")
+
 	slog.Info("cgap worker starting...")
 
 	// Load configuration from environment
@@ -947,3 +951,27 @@ func stripBasicHTML(s string) string {
 var uuidReWorker = regexp.MustCompile(`^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[1-5][0-9a-fA-F]{3}-[89abAB][0-9a-fA-F]{3}-[0-9a-fA-F]{12}$`)
 
 func looksLikeUUID(s string) bool { return uuidReWorker.MatchString(s) }
+
+// printCGAPBanner prints the cgap startup banner with colors.
+func printCGAPBanner(mode string) {
+	const (
+		colorCyan  = "\033[36m"
+		colorReset = "\033[0m"
+		colorBold  = "\033[1m"
+	)
+	fmt.Printf("%s%s", colorCyan, colorBold)
+	fmt.Println(`
+    ░▒▓██████▓▒░ ░▒▓██████▓▒░ ░▒▓██████▓▒░░▒▓███████▓▒░  
+   ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
+   ░▒▓█▓▒░      ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
+   ░▒▓█▓▒░      ░▒▓█▓▒▒▓███▓▒░▒▓████████▓▒░▒▓███████▓▒░  
+   ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░        
+   ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░        
+    ░▒▓██████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░        
+                                                `)
+	fmt.Printf("%s%s", colorReset, colorCyan)
+	fmt.Printf("  Documentation AI Assistant | v0.1.0\n")
+	fmt.Printf("  %s mode\n", mode)
+	fmt.Printf("%s\n", colorReset)
+	os.Stdout.Sync()
+}
