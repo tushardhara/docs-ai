@@ -23,6 +23,7 @@ type Producer struct {
 	key    string
 }
 
+// NewProducer creates a new task queue producer.
 func NewProducer(redisClient *redis.Client) *Producer {
 	return &Producer{
 		client: redisClient,
@@ -55,6 +56,7 @@ type Consumer struct {
 	timeout time.Duration
 }
 
+// NewConsumer creates a new task queue consumer.
 func NewConsumer(redisClient *redis.Client) *Consumer {
 	return &Consumer{
 		client:  redisClient,

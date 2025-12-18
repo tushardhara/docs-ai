@@ -7,6 +7,11 @@ import (
 	"strings"
 )
 
+const (
+	mediaTypeImage  = "image"
+	contentTypeText = "text"
+)
+
 // MediaOrchestrator routes media items to the appropriate handler based on type
 type MediaOrchestrator struct {
 	ocrHandler     *GoogleVisionOCR
@@ -39,7 +44,7 @@ func (o *MediaOrchestrator) ProcessMediaItem(ctx context.Context, item *MediaIte
 	o.logger.Info("Processing media item", "type", item.Type, "url", item.URL)
 
 	switch item.Type {
-	case "image":
+	case mediaTypeImage:
 		return o.processImage(ctx, item)
 	case "youtube":
 		return o.processYouTube(ctx, item)
@@ -65,7 +70,7 @@ func (o *MediaOrchestrator) processImage(ctx context.Context, item *MediaItem) (
 		Language:    result.Language,
 		Confidence:  result.ConfidenceScore,
 		ExtractedAt: item.CreatedAt,
-		ContentType: "text",
+		ContentType: contentTypeText,
 		Metadata:    map[string]interface{}{"ocr": true},
 		Status:      determineStatus(result.Text, result.ConfidenceScore),
 	}, nil

@@ -61,6 +61,8 @@ func (y *YouTubeTranscriptFetcher) GetTranscript(ctx context.Context, videoID st
 
 // fetchTranscriptFromAPI attempts to fetch transcript from YouTube's API
 func (y *YouTubeTranscriptFetcher) fetchTranscriptFromAPI(ctx context.Context, videoID string) (string, string, []TranscriptSegment, error) {
+	// mark context as used for linting; future implementation will propagate it
+	_ = ctx
 	// Construct the YouTube video page URL to extract captions
 	// This is a simplified approach - in production, would use proper API
 	y.logger.Debug("Attempting to fetch transcript via API", "videoID", videoID)

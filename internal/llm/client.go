@@ -7,9 +7,18 @@ import (
 	"cgap/internal/service"
 )
 
+// Provider name constants
+const (
+	ProviderOpenAI    = "openai"
+	ProviderGoogle    = "google"
+	ProviderAnthropic = "anthropic"
+	ProviderGrok      = "grok"
+	ProviderMock      = "mock"
+)
+
 // ProviderConfig holds configuration for any LLM provider
 type ProviderConfig struct {
-	Provider string // "openai", "google", "anthropic", "grok", etc.
+	Provider string // see provider constants above
 	APIKey   string
 	Model    string
 	Config   map[string]interface{} // Custom provider-specific config
@@ -33,15 +42,15 @@ func New(cfg ProviderConfig) (*Client, error) {
 	var err error
 
 	switch cfg.Provider {
-	case "openai":
+	case ProviderOpenAI:
 		provider, err = NewOpenAIProvider(cfg.APIKey, cfg.Model)
-	case "google":
+	case ProviderGoogle:
 		provider, err = NewGoogleProvider(cfg.APIKey, cfg.Model)
-	case "anthropic":
+	case ProviderAnthropic:
 		provider, err = NewAnthropicProvider(cfg.APIKey, cfg.Model)
-	case "grok":
+	case ProviderGrok:
 		provider, err = NewGrokProvider(cfg.APIKey, cfg.Model)
-	case "mock":
+	case ProviderMock:
 		provider = NewMockProvider(cfg.Model)
 	default:
 		return nil, fmt.Errorf("unknown provider: %s", cfg.Provider)

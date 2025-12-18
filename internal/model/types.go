@@ -2,6 +2,17 @@ package model
 
 import "time"
 
+// Common string constants used across the domain
+const (
+	// Source types
+	SourceTypeCrawl = "crawl"
+
+	// Extraction statuses
+	ExtractionSuccess = "success"
+	ExtractionPartial = "partial"
+	ExtractionFailed  = "failed"
+)
+
 // Core domain models aligned with schema.
 type Project struct {
 	ID           string         `json:"id"`
@@ -161,6 +172,7 @@ type GapCluster struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
+// GapClusterExample represents an example question within a gap cluster.
 type GapClusterExample struct {
 	ID                  string   `json:"id"`
 	ClusterID           string   `json:"cluster_id"`

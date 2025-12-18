@@ -73,37 +73,37 @@ func main() {
 	// Initialize LLM client with provider selection
 	llmProvider := os.Getenv("LLM_PROVIDER")
 	if llmProvider == "" {
-		llmProvider = "openai"
+		llmProvider = llm.ProviderOpenAI
 	}
 
 	llmModel := os.Getenv("LLM_MODEL")
 
 	llmAPIKey := openaiKey
 	switch llmProvider {
-	case "openai":
+	case llm.ProviderOpenAI:
 		if llmAPIKey == "" {
 			slog.Error("OPENAI_API_KEY environment variable not set")
 			os.Exit(1)
 		}
-	case "google":
+	case llm.ProviderGoogle:
 		llmAPIKey = geminiKey
 		if llmAPIKey == "" {
 			slog.Error("GEMINI_API_KEY environment variable not set")
 			os.Exit(1)
 		}
-	case "anthropic":
+	case llm.ProviderAnthropic:
 		llmAPIKey = anthropicKey
 		if llmAPIKey == "" {
 			slog.Error("ANTHROPIC_API_KEY environment variable not set")
 			os.Exit(1)
 		}
-	case "grok":
+	case llm.ProviderGrok:
 		llmAPIKey = grokKey
 		if llmAPIKey == "" {
 			slog.Error("XAI_API_KEY environment variable not set")
 			os.Exit(1)
 		}
-	case "mock":
+	case llm.ProviderMock:
 		llmAPIKey = ""
 	default:
 		slog.Error("Unknown LLM_PROVIDER", "provider", llmProvider)
@@ -252,5 +252,5 @@ func printCGAPBanner(port string) {
 	fmt.Printf("  Documentation AI Assistant | v0.1.0\n")
 	fmt.Printf("  Running on http://localhost:%s\n", port)
 	fmt.Printf("%s\n", colorReset)
-	os.Stdout.Sync()
+	_ = os.Stdout.Sync()
 }

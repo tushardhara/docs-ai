@@ -12,6 +12,8 @@ import (
 	"cgap/internal/service"
 )
 
+const doneSentinel = "[DONE]"
+
 // OpenAIProvider implements Provider for OpenAI API over HTTP.
 type OpenAIProvider struct {
 	apiKey string
@@ -136,7 +138,7 @@ func (p *OpenAIProvider) Stream(ctx context.Context, messages []service.Message)
 				continue
 			}
 			payload := strings.TrimSpace(strings.TrimPrefix(line, "data:"))
-			if payload == "[DONE]" {
+			if payload == doneSentinel {
 				break
 			}
 			var chunk openaiChatResponse
@@ -154,5 +156,5 @@ func (p *OpenAIProvider) Stream(ctx context.Context, messages []service.Message)
 
 // Name returns the provider name
 func (p *OpenAIProvider) Name() string {
-	return "openai"
+	return ProviderOpenAI
 }

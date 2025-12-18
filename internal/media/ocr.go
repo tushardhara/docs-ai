@@ -44,8 +44,12 @@ func (g *GoogleVisionOCR) ExtractFromURL(ctx context.Context, imageURL string) (
 	g.logger.Debug("Extracting text from URL", "url", imageURL)
 
 	// Validate URL
-	if _, err := url.Parse(imageURL); err != nil {
+	u, err := url.Parse(imageURL)
+	if err != nil {
 		return nil, fmt.Errorf("%w: %v", ErrInvalidURL, err)
+	}
+	if u.Scheme != "http" && u.Scheme != "https" {
+		return nil, fmt.Errorf("%w: unsupported scheme %s", ErrInvalidURL, u.Scheme)
 	}
 
 	// If we have API key, use real Google Vision API
@@ -59,12 +63,17 @@ func (g *GoogleVisionOCR) ExtractFromURL(ctx context.Context, imageURL string) (
 
 // extractFromURLLocal downloads image and processes locally
 func (g *GoogleVisionOCR) extractFromURLLocal(ctx context.Context, imageURL string) (*OCRResult, error) {
-	// Download the image
-	resp, err := http.Get(imageURL)
+	// Download the image (validated URL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, imageURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("failed to download image: %w", err)
 	}
-	defer resp.Body.Close()
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to download image: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%w: HTTP %d", ErrExtractionFailed, resp.StatusCode)
@@ -75,13 +84,13 @@ func (g *GoogleVisionOCR) extractFromURLLocal(ctx context.Context, imageURL stri
 	if err != nil {
 		return nil, fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer os.Remove(tempFile.Name())
+	defer func() { _ = os.Remove(tempFile.Name()) }()
 
 	if _, err := io.Copy(tempFile, resp.Body); err != nil {
-		tempFile.Close()
+		_ = tempFile.Close()
 		return nil, fmt.Errorf("failed to write image: %w", err)
 	}
-	tempFile.Close()
+	_ = tempFile.Close()
 
 	// Extract from file
 	return g.ExtractFromFile(ctx, tempFile.Name())
@@ -91,14 +100,15 @@ func (g *GoogleVisionOCR) extractFromURLLocal(ctx context.Context, imageURL stri
 func (g *GoogleVisionOCR) ExtractFromFile(ctx context.Context, filePath string) (*OCRResult, error) {
 	g.logger.Debug("Extracting text from file", "path", filePath)
 
-	// Check if file exists
-	if _, err := os.Stat(filePath); err != nil {
+	// Sanitize and check file path
+	cleanPath := filepath.Clean(filePath)
+	if _, err := os.Stat(cleanPath); err != nil {
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
 	// If we have API key, use Google Vision API
 	if g.apiKey != "" {
-		data, err := os.ReadFile(filePath)
+		data, err := os.ReadFile(cleanPath)
 		if err != nil {
 			return nil, fmt.Errorf("failed to read file: %w", err)
 		}
@@ -119,6 +129,7 @@ func (g *GoogleVisionOCR) ExtractFromFile(ctx context.Context, filePath string) 
 
 // extractWithGoogleVisionAPI calls Google Cloud Vision API with image URL
 func (g *GoogleVisionOCR) extractWithGoogleVisionAPI(_ context.Context, imageURL string) (*OCRResult, error) {
+	g.logger.Debug("Google Vision placeholder: using image URL", "url", imageURL)
 	// Build request to Google Vision API
 	// This would use the actual Google Vision client library
 	// For now, placeholder for future implementation
@@ -136,6 +147,7 @@ func (g *GoogleVisionOCR) extractWithGoogleVisionAPI(_ context.Context, imageURL
 
 // extractWithGoogleVisionAPIBytes calls Google Cloud Vision API with image bytes
 func (g *GoogleVisionOCR) extractWithGoogleVisionAPIBytes(_ context.Context, imageData []byte) (*OCRResult, error) {
+	g.logger.Debug("Google Vision placeholder: using image bytes", "size", len(imageData))
 	// Build request to Google Vision API
 	// This would use the actual Google Vision client library
 	// For now, placeholder for future implementation

@@ -26,6 +26,7 @@ import (
 
 	"cgap/api"
 	"cgap/internal/embedding"
+	"cgap/internal/model"
 	"cgap/internal/postgres"
 	"cgap/internal/queue"
 )
@@ -309,7 +310,7 @@ func handleIngest(ctx context.Context, store *postgres.Store, emb embedding.Embe
 	}
 
 	urls := make([]string, 0, 32)
-	if p.Source.Type == "crawl" && p.Source.Crawl != nil {
+	if p.Source.Type == model.SourceTypeCrawl && p.Source.Crawl != nil {
 		// Build URL set based on crawl mode
 		list, err := buildCrawlURLList(ctx, p.Source.Crawl)
 		if err != nil {
@@ -410,7 +411,7 @@ func processURL(ctx context.Context, pool *pgxpool.Pool, httpClient *http.Client
 		return err
 	}
 	body, err := io.ReadAll(resp.Body)
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	if err != nil {
 		return err
 	}
@@ -499,7 +500,7 @@ func buildCrawlURLList(ctx context.Context, cs *api.CrawlSpec) ([]string, error)
 		if cs.SitemapURL == "" {
 			return nil, nil
 		}
-		urls, _ := parseSitemap(ctx, cs.SitemapURL)
+		urls := parseSitemap(ctx, cs.SitemapURL)
 		urls = filterURLs(urls, cs)
 		if cs.MaxPages > 0 && len(urls) > cs.MaxPages {
 			urls = urls[:cs.MaxPages]
@@ -516,7 +517,7 @@ func buildCrawlURLList(ctx context.Context, cs *api.CrawlSpec) ([]string, error)
 }
 
 // parseSitemap parses a simple sitemap.xml (urlset) and returns URL list.
-func parseSitemap(ctx context.Context, sitemapURL string) ([]string, error) {
+func parseSitemap(ctx context.Context, sitemapURL string) []string {
 	visited := map[string]bool{}
 	var out []string
 	client := &http.Client{Timeout: 30 * time.Second}
@@ -580,7 +581,7 @@ func parseSitemap(ctx context.Context, sitemapURL string) ([]string, error) {
 		return nil
 	}
 	_ = fetch(sitemapURL, 0)
-	return dedup(out), nil
+	return dedup(out)
 }
 
 // crawlBFS performs a simple single-threaded BFS crawl with dedup and limits.
@@ -632,7 +633,7 @@ func crawlBFS(ctx context.Context, cs *api.CrawlSpec) ([]string, error) {
 			continue
 		}
 		body, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 			continue
 		}
@@ -1026,5 +1027,5 @@ func printCGAPBanner(mode string) {
 	fmt.Printf("  Documentation AI Assistant | v0.1.0\n")
 	fmt.Printf("  %s mode\n", mode)
 	fmt.Printf("%s\n", colorReset)
-	os.Stdout.Sync()
+	_ = os.Stdout.Sync()
 }

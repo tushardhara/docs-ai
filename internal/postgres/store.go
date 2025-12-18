@@ -18,6 +18,7 @@ type Store struct {
 	pool *pgxpool.Pool
 }
 
+// New creates a new PostgreSQL store with the given connection string.
 func New(dsn string) (*Store, error) {
 	pool, err := pgxpool.New(context.Background(), dsn)
 	if err != nil {
@@ -58,14 +59,17 @@ func runMigrations(pool *pgxpool.Pool) error {
 	return nil
 }
 
+// Projects returns the project repository implementation.
 func (s *Store) Projects() storage.ProjectRepo {
 	return &ProjectRepo{pool: s.pool}
 }
 
+// Documents returns the document repository implementation.
 func (s *Store) Documents() storage.DocumentRepo {
 	return &DocumentRepo{pool: s.pool}
 }
 
+// Chunks returns the chunk repository implementation.
 func (s *Store) Chunks() storage.ChunkRepo {
 	return &ChunkRepo{pool: s.pool}
 }
@@ -284,7 +288,7 @@ func (r *ChunkRepo) CreateBatch(ctx context.Context, chunks []*model.Chunk) erro
 	}
 
 	results := r.pool.SendBatch(ctx, batch)
-	defer results.Close()
+	defer func() { _ = results.Close() }()
 
 	for i := 0; i < len(chunks); i++ {
 		_, err := results.Exec()
@@ -482,7 +486,7 @@ func (r *CitationRepo) CreateBatch(ctx context.Context, citations []*model.Citat
 	}
 
 	results := r.pool.SendBatch(ctx, batch)
-	defer results.Close()
+	defer func() { _ = results.Close() }()
 
 	for i := 0; i < len(citations); i++ {
 		_, err := results.Exec()

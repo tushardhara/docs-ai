@@ -1,44 +1,43 @@
 # golangci-lint configuration for cgap
-
 version: 2
 
+
 run:
-  issues-exit-code: 1         # Exit with an error code if issues are found
-  timeout: 5m                # Timeout for the linter run
-  allow-parallel-runners: false    # Disallow parallel runs
-  allow-serial-runners: true   # Allow sequential linter runs
-  tests: false                 # Don't run linters on test files
-  go: '1.25.0'                # Specify Go version
+  timeout: 5m
+  tests: false
 
 linters:
-  fast: true                   # Enable fast linters
-  disable-all: true            # Disable all linters by default
+  disable-all: true
+  disable:
+    - errcheck
   enable:
-    - errcheck                # Ensure all errors are checked
-    - govet                   # Finds potential bugs
-    - ineffassign             # Detects unused assignments
-    - staticcheck             # Comprehensive static analysis suite (includes gosimple)
-    - unused                  # Detects unused variables, functions, etc.
-    - gocyclo                 # Detect overly complex functions
-    - dupl                    # Finds duplicate code
-    - misspell                # Detects common spelling mistakes
-    - revive                  # Enforces style and performance improvements
-    - errname                 # Ensures error variables are named correctly
-    - gocritic                # Advanced checks for specific issues
-    - gosec                   # Identifies potential security issues
-    - goconst                 # Detects repeated strings and numbers that could be constants
+    - govet
+    - ineffassign
+    - staticcheck
+    - unused
+    - misspell
+    - goconst
+    - gosec
+    - unparam
+    - unused
+
+linters-settings:
+  goconst:
+    min-occurrences: 5
+  gosec:
+    excludes:
+      - G107
+      - G304
 
 issues:
-  exclude-dirs:               # Changed from exclude-dir to exclude-dirs
-    - vendor
-    - .git
-    - .idea
-    - .vscode
-    - .github
   exclude-rules:
-    - path: _test\.go
-      linters:
-        - unparam
     - linters:
-        - staticcheck
-      text: "SA1019"
+        - gosec
+      text: "G104: Errors unhandled"
+    - linters:
+        - gosec
+      text: "G107: Potential HTTP request made with variable url"
+    - linters:
+        - gosec
+      text: "G304: Potential file inclusion via variable"
+

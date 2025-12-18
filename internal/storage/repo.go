@@ -1,3 +1,4 @@
+// Package storage defines repository interfaces for data access.
 package storage
 
 import (
@@ -8,6 +9,7 @@ import (
 
 // Database repository interfaces decoupled from implementation.
 
+// ProjectRepo provides access to project storage operations.
 type ProjectRepo interface {
 	GetByID(ctx context.Context, id string) (*model.Project, error)
 	GetBySlug(ctx context.Context, slug string) (*model.Project, error)
@@ -15,6 +17,7 @@ type ProjectRepo interface {
 	Update(ctx context.Context, p *model.Project) error
 }
 
+// DocumentRepo provides access to document storage operations.
 type DocumentRepo interface {
 	GetByID(ctx context.Context, id string) (*model.Document, error)
 	GetByURI(ctx context.Context, projectID, uri string) (*model.Document, error)

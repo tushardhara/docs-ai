@@ -9,6 +9,15 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+const (
+	sourceTypeOCR               = "ocr"
+	sourceTypeYouTubeTranscript = "youtube_transcript"
+	sourceTypeAudioTranscript   = "audio_transcript"
+	sourceTypePDFText           = "pdf_text"
+
+	contentTypeTranscript = "transcript"
+)
+
 // MediaStore handles database operations for media items and extracted text
 type MediaStore struct {
 	db *pgxpool.Pool
@@ -238,35 +247,35 @@ func (s *MediaStore) GetExtractedText(ctx context.Context, mediaItemID string) (
 func mapContentTypeToSourceType(contentType string, metadata map[string]interface{}) string {
 	if metadata != nil {
 		if _, ok := metadata["youtube"]; ok {
-			return "youtube_transcript"
+			return sourceTypeYouTubeTranscript
 		}
 		if _, ok := metadata["video"]; ok {
-			return "audio_transcript"
+			return sourceTypeAudioTranscript
 		}
 		if _, ok := metadata["ocr"]; ok {
-			return "ocr"
+			return sourceTypeOCR
 		}
 	}
 
 	switch contentType {
-	case "text":
-		return "ocr"
-	case "transcript":
-		return "audio_transcript"
+	case contentTypeText:
+		return sourceTypeOCR
+	case contentTypeTranscript:
+		return sourceTypeAudioTranscript
 	default:
-		return "ocr"
+		return sourceTypeOCR
 	}
 }
 
 func mapSourceTypeToContentType(sourceType string) string {
 	switch sourceType {
-	case "ocr":
-		return "text"
-	case "youtube_transcript", "audio_transcript":
-		return "transcript"
-	case "pdf_text":
-		return "text"
+	case sourceTypeOCR:
+		return contentTypeText
+	case sourceTypeYouTubeTranscript, sourceTypeAudioTranscript:
+		return contentTypeTranscript
+	case sourceTypePDFText:
+		return contentTypeText
 	default:
-		return "text"
+		return contentTypeText
 	}
 }

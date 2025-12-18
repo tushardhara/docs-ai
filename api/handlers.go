@@ -3,6 +3,7 @@ package api
 import (
 	"cgap/internal/embedding"
 	"cgap/internal/media"
+	"cgap/internal/model"
 	"cgap/internal/queue"
 	"context"
 	"fmt"
@@ -197,12 +198,12 @@ func OCRHandler(c fiber.Ctx) error {
 	}
 
 	// Determine extraction status
-	extractionStatus := "success"
+	extractionStatus := model.ExtractionSuccess
 	if result.ConfidenceScore < 0.5 {
-		extractionStatus = "partial"
+		extractionStatus = model.ExtractionPartial
 	}
 	if result.Text == "" {
-		extractionStatus = "failed"
+		extractionStatus = model.ExtractionFailed
 	}
 
 	// Generate a temporary media_item_id for this response
@@ -266,11 +267,11 @@ func YouTubeHandler(c fiber.Ctx) error {
 	}
 
 	// Determine extraction status
-	extractionStatus := "success"
+	extractionStatus := model.ExtractionSuccess
 	if result.Transcript == "" {
-		extractionStatus = "failed"
+		extractionStatus = model.ExtractionFailed
 	} else if len(result.Segments) == 0 {
-		extractionStatus = "partial"
+		extractionStatus = model.ExtractionPartial
 	}
 
 	// Generate a temporary media_item_id for this response
@@ -328,11 +329,11 @@ func VideoHandler(c fiber.Ctx) error {
 	}
 
 	// Determine extraction status
-	extractionStatus := "success"
+	extractionStatus := model.ExtractionSuccess
 	if result.Transcript == "" {
-		extractionStatus = "failed"
+		extractionStatus = model.ExtractionFailed
 	} else if len(result.Segments) == 0 {
-		extractionStatus = "partial"
+		extractionStatus = model.ExtractionPartial
 	}
 
 	// Generate a temporary media_item_id for this response
@@ -434,7 +435,7 @@ func MediaProcessHandler(c fiber.Ctx) error {
 		if services != nil && services.DB != nil {
 			store := media.NewMediaStore(services.DB)
 			errMsg := err.Error()
-			store.UpdateMediaItemStatus(ctx, mediaItem.ID, "failed", &errMsg)
+			_ = store.UpdateMediaItemStatus(ctx, mediaItem.ID, "failed", &errMsg)
 		}
 
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
@@ -763,13 +764,13 @@ func IngestHandler(c fiber.Ctx) error {
 		if req.Source.URL == "" {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source.url required for type=url"})
 		}
-	case "crawl":
+	case model.SourceTypeCrawl:
 		if req.Source.Crawl == nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "source.crawl required for type=crawl"})
 		}
 		mode := req.Source.Crawl.Mode
 		if mode == "" {
-			mode = "crawl"
+			mode = model.SourceTypeCrawl
 			req.Source.Crawl.Mode = mode
 		}
 		switch mode {
@@ -781,7 +782,7 @@ func IngestHandler(c fiber.Ctx) error {
 			if req.Source.Crawl.SitemapURL == "" {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "crawl.sitemap_url required for mode=sitemap"})
 			}
-		case "crawl":
+		case model.SourceTypeCrawl:
 			if req.Source.Crawl.StartURL == "" {
 				return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "crawl.start_url required for mode=crawl"})
 			}
