@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/xml"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	neturl "net/url"
 	"os"
@@ -28,18 +28,20 @@ import (
 )
 
 func main() {
-	log.Println("cgap worker starting...")
+	slog.Info("cgap worker starting...")
 
 	// Load configuration from environment
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		log.Fatal("DATABASE_URL environment variable not set")
+		slog.Error("DATABASE_URL environment variable not set")
+		os.Exit(1)
 	}
 
 	// Initialize PostgreSQL storage with pgx
 	store, err := postgres.New(dbURL)
 	if err != nil {
-		log.Fatalf("Failed to initialize postgres store: %v", err)
+		slog.Error("Failed to initialize postgres store", "error", err)
+		os.Exit(1)
 	}
 	defer store.Close()
 
@@ -55,13 +57,13 @@ func main() {
 
 	// Start job processor
 	go func() {
-		log.Println("Starting job consumer...")
+		slog.Info("Starting job consumer...")
 		ctx := context.Background()
 		for {
 			// Get next task
 			task, err := consumer.Process(ctx)
 			if err != nil {
-				log.Printf("Consumer error: %v", err)
+				slog.Error("Consumer error", "error", err)
 				continue
 			}
 
@@ -71,16 +73,16 @@ func main() {
 			}
 
 			// Route task to appropriate handler based on task.Type
-			log.Printf("Processing task: type=%s, id=%s", task.Type, task.ID)
+			slog.Info("Processing task", "type", task.Type, "id", task.ID)
 
 			switch task.Type {
 			case "ingest":
 				if err := handleIngest(ctx, store, embedder, redisClient, task.ID, task.Payload); err != nil {
-					log.Printf("ingest error (task=%s): %v", task.ID, err)
+					slog.Error("ingest error", "task_id", task.ID, "error", err)
 					// Mark failed
 					_ = markJobFailed(ctx, redisClient, task.ID, err)
 				} else {
-					log.Printf("ingest completed (task=%s)", task.ID)
+					slog.Info("ingest completed", "task_id", task.ID)
 					// Mark completed
 					_ = markJobCompleted(ctx, redisClient, task.ID)
 				}
@@ -90,15 +92,15 @@ func main() {
 		}
 	}()
 
-	log.Println("Worker ready")
+	slog.Info("Worker ready")
 
 	// Wait for interrupt signal for graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("Shutting down worker...")
-	log.Println("Worker stopped")
+	slog.Info("Shutting down worker...")
+	slog.Info("Worker stopped")
 }
 
 // buildEmbedder constructs an embedder from environment configuration.
@@ -112,7 +114,7 @@ func buildEmbedder() embedding.Embedder {
 	case "openai":
 		key := os.Getenv("OPENAI_API_KEY")
 		if key == "" {
-			log.Println("OPENAI_API_KEY not set; embeddings may fail")
+			slog.Warn("OPENAI_API_KEY not set; embeddings may fail")
 		}
 		return embedding.NewOpenAIEmbedder(key, model)
 	case "http":
@@ -122,7 +124,7 @@ func buildEmbedder() embedding.Embedder {
 	default: // google
 		key := os.Getenv("GEMINI_API_KEY")
 		if key == "" {
-			log.Println("GEMINI_API_KEY not set; embeddings may fail")
+			slog.Warn("GEMINI_API_KEY not set; embeddings may fail")
 		}
 		return embedding.NewGoogleEmbedder(key, model)
 	}
@@ -321,7 +323,7 @@ func handleIngest(ctx context.Context, store *postgres.Store, emb embedding.Embe
 				}
 			}
 			if err := processURL(workCtx, pool, httpClient, emb, pid, p.Source, u); err != nil {
-				log.Printf("ingest: error processing %s: %v", u, err)
+				slog.Error("ingest: error processing URL", "url", u, "error", err)
 				if p.FailFast {
 					once.Do(func() {
 						firstErr = err
@@ -356,7 +358,7 @@ func processURL(ctx context.Context, pool *pgxpool.Pool, httpClient *http.Client
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		log.Printf("fetch failed: %s status=%d", u, resp.StatusCode)
+		slog.Warn("fetch failed", "url", u, "status", resp.StatusCode)
 		return nil
 	}
 
@@ -895,13 +897,6 @@ func markJobFailed(ctx context.Context, rdb *redis.Client, jobID string, err err
 		"error":       err.Error(),
 		"finished_at": now,
 		"updated_at":  now,
-	}).Err()
-}
-
-func setJobTotal(ctx context.Context, rdb *redis.Client, jobID string, total int) error {
-	return rdb.HSet(ctx, jobKey(jobID), map[string]any{
-		"total":      total,
-		"updated_at": time.Now().UTC().Format(time.RFC3339),
 	}).Err()
 }
 

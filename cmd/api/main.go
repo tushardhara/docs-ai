@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
@@ -22,7 +22,10 @@ import (
 )
 
 func main() {
-	log.Println("cgap API starting...")
+	// Print custom startup banner first
+	printCGAPBanner("8080")
+
+	slog.Info("cgap API starting")
 
 	// Load configuration from environment
 	port := os.Getenv("PORT")
@@ -30,12 +33,10 @@ func main() {
 		port = "8080"
 	}
 
-	// Print custom startup banner early
-	printCGAPBanner(port)
-
 	dbURL := os.Getenv("DATABASE_URL")
 	if dbURL == "" {
-		log.Fatal("DATABASE_URL environment variable not set")
+		slog.Error("DATABASE_URL environment variable not set")
+		os.Exit(1)
 	}
 
 	meiliURL := os.Getenv("MEILISEARCH_URL")
@@ -61,7 +62,8 @@ func main() {
 	// Initialize PostgreSQL storage with pgx
 	store, err := postgres.New(dbURL)
 	if err != nil {
-		log.Fatalf("Failed to initialize postgres store: %v", err)
+		slog.Error("Failed to initialize postgres store", "error", err)
+		os.Exit(1)
 	}
 	defer store.Close()
 
@@ -80,27 +82,32 @@ func main() {
 	switch llmProvider {
 	case "openai":
 		if llmAPIKey == "" {
-			log.Fatal("OPENAI_API_KEY environment variable not set")
+			slog.Error("OPENAI_API_KEY environment variable not set")
+			os.Exit(1)
 		}
 	case "google":
 		llmAPIKey = geminiKey
 		if llmAPIKey == "" {
-			log.Fatal("GEMINI_API_KEY environment variable not set")
+			slog.Error("GEMINI_API_KEY environment variable not set")
+			os.Exit(1)
 		}
 	case "anthropic":
 		llmAPIKey = anthropicKey
 		if llmAPIKey == "" {
-			log.Fatal("ANTHROPIC_API_KEY environment variable not set")
+			slog.Error("ANTHROPIC_API_KEY environment variable not set")
+			os.Exit(1)
 		}
 	case "grok":
 		llmAPIKey = grokKey
 		if llmAPIKey == "" {
-			log.Fatal("XAI_API_KEY environment variable not set")
+			slog.Error("XAI_API_KEY environment variable not set")
+			os.Exit(1)
 		}
 	case "mock":
 		llmAPIKey = ""
 	default:
-		log.Fatalf("Unknown LLM_PROVIDER '%s'", llmProvider)
+		slog.Error("Unknown LLM_PROVIDER", "provider", llmProvider)
+		os.Exit(1)
 	}
 
 	llmClient, err := llm.New(llm.ProviderConfig{
@@ -109,7 +116,8 @@ func main() {
 		Model:    llmModel,
 	})
 	if err != nil {
-		log.Fatalf("Failed to initialize LLM client: %v", err)
+		slog.Error("Failed to initialize LLM client", "error", err)
+		os.Exit(1)
 	}
 
 	// Initialize Search provider by strategy
@@ -129,12 +137,14 @@ func main() {
 	switch embProvider {
 	case "openai":
 		if openaiKey == "" {
-			log.Fatal("OPENAI_API_KEY environment variable not set for embeddings")
+			slog.Error("OPENAI_API_KEY environment variable not set for embeddings")
+			os.Exit(1)
 		}
 		embedder = embedding.NewOpenAIEmbedder(openaiKey, os.Getenv("EMBEDDING_MODEL"))
 	case "google":
 		if geminiKey == "" {
-			log.Fatal("GEMINI_API_KEY environment variable not set for embeddings")
+			slog.Error("GEMINI_API_KEY environment variable not set for embeddings")
+			os.Exit(1)
 		}
 		embedder = embedding.NewGoogleEmbedder(geminiKey, os.Getenv("EMBEDDING_MODEL"))
 	case "http":
@@ -142,9 +152,10 @@ func main() {
 	case "mock":
 		embedder = embedding.NewMockEmbedder(1536)
 	default:
-		log.Printf("Unknown EMBEDDING_PROVIDER '%s', defaulting to openai", embProvider)
+		slog.Warn("Unknown EMBEDDING_PROVIDER, defaulting to openai", "provider", embProvider)
 		if openaiKey == "" {
-			log.Fatal("OPENAI_API_KEY environment variable not set for embeddings")
+			slog.Error("OPENAI_API_KEY environment variable not set for embeddings")
+			os.Exit(1)
 		}
 		embedder = embedding.NewOpenAIEmbedder(openaiKey, os.Getenv("EMBEDDING_MODEL"))
 	}
@@ -157,7 +168,7 @@ func main() {
 	case "hybrid":
 		searchClient = search.NewHybrid(search.NewPGVector(store, embedder), meiliClient)
 	default:
-		log.Printf("Unknown SEARCH_PROVIDER '%s', defaulting to hybrid", searchStrategy)
+		slog.Warn("Unknown SEARCH_PROVIDER, defaulting to hybrid", "provider", searchStrategy)
 		searchClient = search.NewHybrid(search.NewPGVector(store, embedder), meiliClient)
 	}
 
@@ -197,8 +208,11 @@ func main() {
 
 	// Start server
 	go func() {
-		if err := app.Listen(":" + port); err != nil {
-			log.Fatalf("Server error: %v", err)
+		if err := app.Listen(":"+port, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}); err != nil {
+			slog.Error("Server error", "error", err)
+			os.Exit(1)
 		}
 	}()
 
@@ -207,13 +221,13 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("Shutting down API server...")
+	slog.Info("Shutting down API server...")
 
 	if err := app.ShutdownWithContext(context.Background()); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+		slog.Error("Server shutdown error", "error", err)
 	}
 
-	log.Println("API server stopped")
+	slog.Info("API server stopped")
 }
 
 // printCGAPBanner prints the cgap startup banner with colors.
@@ -225,15 +239,17 @@ func printCGAPBanner(port string) {
 	)
 	fmt.Printf("%s%s", colorCyan, colorBold)
 	fmt.Println(`
-   _____ _____ _____   ____
-  / ____/ ____|  __ \ / __ \
- | |   | |  __| |__) | |  | |
- | |   | | |_ |  _  /| |  | |
- | |___| |__| | | \ \| |__| |
-  \_____\_____|_|  \_\\____/
-`)
+    ░▒▓██████▓▒░ ░▒▓██████▓▒░ ░▒▓██████▓▒░░▒▓███████▓▒░  
+   ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
+   ░▒▓█▓▒░      ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░ 
+   ░▒▓█▓▒░      ░▒▓█▓▒▒▓███▓▒░▒▓████████▓▒░▒▓███████▓▒░  
+   ░▒▓█▓▒░      ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░        
+   ░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░        
+    ░▒▓██████▓▒░ ░▒▓██████▓▒░░▒▓█▓▒░░▒▓█▓▒░▒▓█▓▒░        
+                                                `)
 	fmt.Printf("%s%s", colorReset, colorCyan)
 	fmt.Printf("  Documentation AI Assistant | v0.1.0\n")
-	fmt.Printf("  Server listening on http://localhost:%s\n", port)
+	fmt.Printf("  Running on http://localhost:%s\n", port)
 	fmt.Printf("%s\n", colorReset)
+	os.Stdout.Sync()
 }
