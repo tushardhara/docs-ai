@@ -1,7 +1,5 @@
 # golangci-lint configuration for cgap
 
-# golangci-lint configuration for cgap
-
 version: 2
 
 run:
