@@ -351,6 +351,127 @@ func VideoHandler(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(response)
 }
 
+// MediaProcessHandler handles POST /v1/media/process - unified media processing endpoint
+func MediaProcessHandler(c fiber.Ctx) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+
+	var req MediaProcessRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	// Validate required fields
+	if req.ProjectID == "" || req.SourceID == "" || req.MediaURL == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "project_id, source_id, and media_url are required",
+		})
+	}
+
+	// Initialize media orchestrator
+	orchestrator, err := media.NewMediaOrchestrator(slog.Default())
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to initialize media processor: %v", err),
+		})
+	}
+	defer orchestrator.Close()
+
+	// Detect media type if not provided
+	mediaType := req.MediaType
+	if mediaType == "" {
+		mediaType = orchestrator.DetectMediaType(req.MediaURL)
+		slog.Info("Auto-detected media type", "url", req.MediaURL, "type", mediaType)
+	}
+
+	// Validate media type
+	supportedTypes := orchestrator.GetSupportedTypes()
+	isSupported := false
+	for _, t := range supportedTypes {
+		if t == mediaType {
+			isSupported = true
+			break
+		}
+	}
+	if !isSupported {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error":           fmt.Sprintf("Unsupported media type: %s", mediaType),
+			"supported_types": supportedTypes,
+		})
+	}
+
+	// Create media item
+	mediaItem := &media.MediaItem{
+		ID:        fmt.Sprintf("media_%d", time.Now().Unix()),
+		ProjectID: req.ProjectID,
+		SourceID:  req.SourceID,
+		Type:      mediaType,
+		URL:       req.MediaURL,
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+	}
+
+	// Save media item to database if DB is available
+	if services != nil && services.DB != nil {
+		store := media.NewMediaStore(services.DB)
+
+		// Create media item record
+		if err := store.CreateMediaItem(ctx, mediaItem); err != nil {
+			slog.Warn("Failed to save media item to database", "error", err)
+			// Continue processing even if DB save fails
+		}
+
+		// Update status to processing
+		if err := store.UpdateMediaItemStatus(ctx, mediaItem.ID, "processing", nil); err != nil {
+			slog.Warn("Failed to update media item status", "error", err)
+		}
+	}
+
+	// Process media
+	result, err := orchestrator.ProcessMediaItem(ctx, mediaItem)
+	if err != nil {
+		// Update status to failed if DB is available
+		if services != nil && services.DB != nil {
+			store := media.NewMediaStore(services.DB)
+			errMsg := err.Error()
+			store.UpdateMediaItemStatus(ctx, mediaItem.ID, "failed", &errMsg)
+		}
+
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Media processing failed: %v", err),
+		})
+	}
+
+	// Save extracted text to database if DB is available
+	if services != nil && services.DB != nil {
+		store := media.NewMediaStore(services.DB)
+
+		if err := store.SaveExtractedText(ctx, result); err != nil {
+			slog.Warn("Failed to save extracted text to database", "error", err)
+			// Continue even if DB save fails
+		}
+
+		// Update status to completed
+		if err := store.UpdateMediaItemStatus(ctx, mediaItem.ID, "completed", nil); err != nil {
+			slog.Warn("Failed to update media item status to completed", "error", err)
+		}
+	}
+
+	// Build response
+	response := MediaProcessResponse{
+		MediaItemID:      result.MediaItemID,
+		MediaType:        mediaType,
+		Text:             result.Text,
+		Language:         result.Language,
+		Confidence:       result.Confidence,
+		ContentType:      result.ContentType,
+		Metadata:         result.Metadata,
+		ProcessedAt:      result.ExtractedAt,
+		ExtractionStatus: result.Status,
+	}
+
+	return c.Status(fiber.StatusOK).JSON(response)
+}
+
 // IngestHandler handles POST /v1/ingest
 func IngestHandler(c fiber.Ctx) error {
 	var req IngestRequest
@@ -756,6 +877,7 @@ func RegisterRoutesWithServices(app *fiber.App, svc *Services, deps *HealthDeps)
 	app.Post("/v1/deflect/event", DeflectEventHandler)
 
 	// Media handlers
+	app.Post("/v1/media/process", MediaProcessHandler) // Unified endpoint (auto-detects type)
 	app.Post("/v1/media/ocr", OCRHandler)
 	app.Post("/v1/media/youtube", YouTubeHandler)
 	app.Post("/v1/media/video", VideoHandler)

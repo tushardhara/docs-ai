@@ -82,24 +82,31 @@ type MediaItem struct {
 	ID            string
 	ProjectID     string
 	SourceID      string
-	Type          string // "image", "video", "pdf", "audio"
+	Type          string // "image", "video", "youtube", "pdf", "audio"
 	URL           string
 	ExternalID    string // YouTube video ID, etc.
 	FileSizeBytes int
+	CreatedAt     string // RFC3339 timestamp
 }
 
 // ExtractedContent is the result of media processing
 type ExtractedContent struct {
+	// Media item ID that was processed
+	MediaItemID string
 	// The extracted text
 	Text string
-	// Type of extraction: "ocr", "youtube_transcript", etc.
-	SourceType string
-	// Confidence score (0-1) for OCR
-	ConfidenceScore *float64
+	// Type of content: "text", "transcript", etc.
+	ContentType string
+	// Confidence score (0-1)
+	Confidence float64
 	// Language of extracted content
 	Language string
-	// Timestamp if this is from a video
-	TimestampSeconds *int
+	// When extraction was performed
+	ExtractedAt string
+	// Additional metadata (segments, video_id, etc.)
+	Metadata map[string]interface{}
+	// Status: "success", "partial", "failed"
+	Status string
 }
 
 // Config holds configuration for media handlers

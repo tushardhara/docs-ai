@@ -200,6 +200,7 @@ func main() {
 		Analytics: analyticsService,
 		Gaps:      gapsService,
 		Queue:     queue.NewProducer(redisClient),
+		DB:        store.Pool(),
 	}, &api.HealthDeps{
 		DB:    store.Pool(),
 		Redis: redisClient,

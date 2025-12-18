@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"cgap/internal/model"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 // Core domain models aliased to shared internal/model definitions to avoid drift.
@@ -329,6 +331,26 @@ type VideoResponse struct {
 	ExtractionStatus string                      `json:"extraction_status"` // "success", "partial", "failed"
 }
 
+// Unified Media Processing Request/Response types
+type MediaProcessRequest struct {
+	ProjectID string `json:"project_id"`
+	SourceID  string `json:"source_id"`
+	MediaURL  string `json:"media_url"`
+	MediaType string `json:"media_type,omitempty"` // Optional: "image", "youtube", "video" - will auto-detect if empty
+}
+
+type MediaProcessResponse struct {
+	MediaItemID      string                 `json:"media_item_id"`
+	MediaType        string                 `json:"media_type"` // Detected or provided type
+	Text             string                 `json:"text"`
+	Language         string                 `json:"language"`
+	Confidence       float64                `json:"confidence"`
+	ContentType      string                 `json:"content_type"` // "text", "transcript"
+	Metadata         map[string]interface{} `json:"metadata,omitempty"`
+	ProcessedAt      string                 `json:"processed_at"`
+	ExtractionStatus string                 `json:"extraction_status"` // "success", "partial", "failed"
+}
+
 // Services container holds all service implementations for dependency injection
 type Services struct {
 	Chat      ChatService
@@ -336,5 +358,6 @@ type Services struct {
 	Deflect   DeflectService
 	Analytics AnalyticsService
 	Gaps      GapsService
-	Queue     interface{} // queue.Producer
+	Queue     interface{}   // queue.Producer
+	DB        *pgxpool.Pool // Database connection pool for media storage
 }
