@@ -22,6 +22,8 @@ import (
 	"github.com/pgvector/pgvector-go"
 	"github.com/redis/go-redis/v9"
 
+	"github.com/gofiber/fiber/v3"
+
 	"cgap/api"
 	"cgap/internal/embedding"
 	"cgap/internal/postgres"
@@ -58,6 +60,52 @@ func main() {
 
 	// Build embedder for ingestion
 	embedder := buildEmbedder()
+
+	// Start HTTP health check server
+	healthPort := os.Getenv("HEALTH_PORT")
+	if healthPort == "" {
+		healthPort = "8081"
+	}
+
+	app := fiber.New(fiber.Config{
+		AppName: "cgap-worker",
+	})
+
+	app.Get("/health", func(c fiber.Ctx) error {
+		// Check DB connectivity
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+		err := store.Pool().Ping(ctx)
+		if err != nil {
+			return c.Status(503).JSON(fiber.Map{
+				"status": "unhealthy",
+				"db":     "disconnected",
+			})
+		}
+
+		// Check Redis connectivity
+		statusCmd := redisClient.Ping(ctx)
+		if statusCmd.Err() != nil {
+			return c.Status(503).JSON(fiber.Map{
+				"status": "unhealthy",
+				"redis":  "disconnected",
+			})
+		}
+
+		return c.JSON(fiber.Map{
+			"status": "healthy",
+			"db":     "connected",
+			"redis":  "connected",
+		})
+	})
+
+	go func() {
+		if err := app.Listen(":"+healthPort, fiber.ListenConfig{
+			DisableStartupMessage: true,
+		}); err != nil {
+			slog.Error("Health server error", "error", err)
+		}
+	}()
 
 	// Start job processor
 	go func() {
@@ -104,6 +152,11 @@ func main() {
 	<-sigChan
 
 	slog.Info("Shutting down worker...")
+
+	if err := app.ShutdownWithContext(context.Background()); err != nil {
+		slog.Error("Health server shutdown error", "error", err)
+	}
+
 	slog.Info("Worker stopped")
 }
 
