@@ -28,9 +28,12 @@ linters:
     - goconst                 # Detects repeated strings and numbers that could be constants
 
 issues:
-  exclude-dirs:
+  exclude-dirs:               # Changed from exclude-dir to exclude-dirs
     - vendor
-    - node_modules
+    - .git
+    - .idea
+    - .vscode
+    - .github
   exclude-rules:
     - path: _test\.go
       linters:
