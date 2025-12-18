@@ -12,6 +12,7 @@ run:
 
 linters:
   fast: true                   # Enable fast linters
+  disable-all: true            # Disable all linters by default
   enable:
     - errcheck                # Ensure all errors are checked
     - govet                   # Finds potential bugs
