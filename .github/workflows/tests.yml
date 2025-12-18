@@ -73,7 +73,7 @@ jobs:
 
     - name: Run linter
       run: |
-        go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.4.0
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@v1.64.8
         $(go env GOPATH)/bin/golangci-lint version
         $(go env GOPATH)/bin/golangci-lint config verify -c .golangci.yml
         $(go env GOPATH)/bin/golangci-lint run --timeout=5m -c .golangci.yml ./...
