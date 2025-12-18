@@ -1,5 +1,7 @@
 # CGAP: AI Browser Extension for SaaS Setup
 
+[![codecov](https://codecov.io/gh/tushardhara/docs-ai/graph/badge.svg?token=19N35H8FXA)](https://codecov.io/gh/tushardhara/docs-ai)
+
 **CGAP** is a browser extension that provides AI-guided setup assistance inside any SaaS dashboard.
 
 **How it works:**

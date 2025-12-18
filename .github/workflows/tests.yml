@@ -72,12 +72,11 @@ jobs:
         fi
 
     - name: Run linter
-      uses: golangci/golangci-lint-action@v6
-      with:
-        # Build golangci-lint from source using the runner's Go (1.25)
-        install-mode: goinstall
-        version: v1.64.8
-        args: --timeout=5m
+      run: |
+        go install github.com/golangci/golangci-lint/cmd/golangci-lint@v2.4.0
+        $(go env GOPATH)/bin/golangci-lint version
+        $(go env GOPATH)/bin/golangci-lint config verify -c .golangci.yml
+        $(go env GOPATH)/bin/golangci-lint run --timeout=5m -c .golangci.yml ./...
 
   integration-tests:
     name: Integration Tests
