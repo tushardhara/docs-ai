@@ -1,6 +1,15 @@
-# cgap: Open-Source Documentation AI Assistant
+# cgap: Open-Source SaaS Setup Copilot
 
-cgap is an AI-powered documentation assistant that helps teams answer questions, deflect support tickets, and identify coverage gaps using hybrid semantic search (Meilisearch + pgvector), LLM-powered responses, and intelligent analytics.
+cgap is an open-source **SaaS setup copilot** that turns “what I’m trying to do” into **step-by-step guidance inside your product UI**—grounded in your docs, screenshots, and walkthrough videos. It also deflects repetitive support questions and highlights where users get stuck.
+
+
+## What you get
+- **Do mode**: goal → clickable steps + checklist (create campaigns, reports, tracking plans, etc.)
+- **Explain mode**: plain-English explanations of screens/metrics + “where to go next”
+- **Evidence-first answers**: citations to docs + timestamps for videos (when available)
+- **Ingestion pipeline**: websites/docs/PDFs + images (OCR) + tutorials (YouTube transcripts / video ASR)
+- **Enablement analytics**: clusters recurring “stuck” questions into actionable fixes (docs/UI/playbooks)
+- **Optional Autopilot (roadmap)**: guardrailed browser automation for repeatable workflows
 
 ## Quick Start
 
