@@ -355,9 +355,10 @@ func TestChatService_ChatStream_Success(t *testing.T) {
 	doneReceived := false
 
 	for frame := range ch {
-		if frame.Type == "token" {
+		switch frame.Type {
+		case "token":
 			tokenCount++
-		} else if frame.Type == "done" {
+		case "done":
 			doneReceived = true
 		}
 	}
