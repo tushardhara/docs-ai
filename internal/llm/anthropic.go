@@ -27,7 +27,7 @@ func NewAnthropicProvider(apiKey, model string) (*AnthropicProvider, error) {
 		apiKey = v
 	}
 	if apiKey == "" {
-		return nil, fmt.Errorf("Anthropic API key is required")
+		return nil, fmt.Errorf("anthropic API key is required")
 	}
 
 	if model == "" {

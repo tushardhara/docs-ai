@@ -22,7 +22,7 @@ func (m *MockEmbedder) Embed(ctx context.Context, text string) ([]float32, error
 	_, _ = h.Write([]byte(text))
 	seed := h.Sum64()
 	// simple LCG
-	var x uint64 = seed | 1
+	x := seed | 1
 	out := make([]float32, m.Dim)
 	for i := 0; i < m.Dim; i++ {
 		x = (6364136223846793005*x + 1)

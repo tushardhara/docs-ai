@@ -27,7 +27,7 @@ func NewGrokProvider(apiKey, model string) (*GrokProvider, error) {
 		apiKey = v
 	}
 	if apiKey == "" {
-		return nil, fmt.Errorf("Grok API key is required")
+		return nil, fmt.Errorf("grok API key is required")
 	}
 
 	if model == "" {

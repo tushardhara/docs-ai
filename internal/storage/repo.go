@@ -22,40 +22,47 @@ type DocumentRepo interface {
 	List(ctx context.Context, projectID string, limit, offset int) ([]*model.Document, error)
 }
 
+// ChunkRepo provides access to chunk storage operations.
 type ChunkRepo interface {
 	GetByID(ctx context.Context, id string) (*model.Chunk, error)
 	CreateBatch(ctx context.Context, chunks []*model.Chunk) error
 	ListByDocument(ctx context.Context, documentID string) ([]*model.Chunk, error)
 }
 
+// ThreadRepo provides access to thread storage operations.
 type ThreadRepo interface {
 	GetByID(ctx context.Context, id string) (*model.Thread, error)
 	Create(ctx context.Context, t *model.Thread) error
 	Update(ctx context.Context, t *model.Thread) error
 }
 
+// MessageRepo provides access to message storage operations.
 type MessageRepo interface {
 	GetByID(ctx context.Context, id string) (*model.Message, error)
 	Create(ctx context.Context, m *model.Message) error
 	ListByThread(ctx context.Context, threadID string, limit, offset int) ([]*model.Message, error)
 }
 
+// AnswerRepo provides access to answer storage operations.
 type AnswerRepo interface {
 	Create(ctx context.Context, a *model.Answer) error
 	GetByMessageID(ctx context.Context, messageID string) (*model.Answer, error)
 }
 
+// CitationRepo provides access to citation storage operations.
 type CitationRepo interface {
 	CreateBatch(ctx context.Context, citations []*model.Citation) error
 	ListByAnswer(ctx context.Context, answerID string) ([]*model.Citation, error)
 }
 
+// AnalyticsRepo provides access to analytics storage operations.
 type AnalyticsRepo interface {
 	RecordEvent(ctx context.Context, e *model.AnalyticsEvent) error
 	CountQuestions(ctx context.Context, projectID string, from, to string) (int, error)
 	CountUncertain(ctx context.Context, projectID string, from, to string) (int, error)
 }
 
+// GapRepo provides access to gap analysis storage operations.
 type GapRepo interface {
 	CreateCandidate(ctx context.Context, gc *model.GapCandidate) error
 	CreateCluster(ctx context.Context, gc *model.GapCluster) error

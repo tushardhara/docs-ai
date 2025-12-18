@@ -827,13 +827,7 @@ func IngestHandler(c fiber.Ctx) error {
 	}
 
 	// Build task payload
-	payload := IngestTaskPayload{
-		ProjectID:      req.ProjectID,
-		Source:         req.Source,
-		ChunkStrategy:  req.ChunkStrategy,
-		ChunkSizeToken: req.ChunkSizeToken,
-		FailFast:       req.FailFast,
-	}
+	payload := IngestTaskPayload(req)
 
 	jobID := fmt.Sprintf("job_%s_%d", req.ProjectID, time.Now().UnixNano())
 

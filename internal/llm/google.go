@@ -16,7 +16,7 @@ type GoogleProvider struct {
 // NewGoogleProvider creates a new Google provider
 func NewGoogleProvider(apiKey, model string) (*GoogleProvider, error) {
 	if apiKey == "" {
-		return nil, fmt.Errorf("Google API key is required")
+		return nil, fmt.Errorf("google API key is required")
 	}
 
 	if model == "" {
