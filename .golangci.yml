@@ -3,22 +3,29 @@
 version: 2
 
 run:
-  timeout: 5m
+  issues-exit-code: 1         # Exit with an error code if issues are found
+  timeout: 5m                # Timeout for the linter run
+  allow-parallel-runners: false    # Disallow parallel runs
+  allow-serial-runners: true   # Allow sequential linter runs
+  tests: false                 # Don't run linters on test files
+  go: '1.25.0'                # Specify Go version
 
 linters:
+  fast: true                   # Enable fast linters
   enable:
-    - errcheck
-    - govet
-    - ineffassign
-    - staticcheck
-    - unused
-    - gosimple
-    - misspell
-    - unparam
-    - bodyclose
-    - exhaustive
-    - noctx
-    - revive
+    - errcheck                # Ensure all errors are checked
+    - govet                   # Finds potential bugs
+    - ineffassign             # Detects unused assignments
+    - staticcheck             # Comprehensive static analysis suite (includes gosimple)
+    - unused                  # Detects unused variables, functions, etc.
+    - gocyclo                 # Detect overly complex functions
+    - dupl                    # Finds duplicate code
+    - misspell                # Detects common spelling mistakes
+    - revive                  # Enforces style and performance improvements
+    - errname                 # Ensures error variables are named correctly
+    - gocritic                # Advanced checks for specific issues
+    - gosec                   # Identifies potential security issues
+    - goconst                 # Detects repeated strings and numbers that could be constants
 
 issues:
   exclude-dirs:
