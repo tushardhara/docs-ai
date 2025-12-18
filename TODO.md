@@ -1,9 +1,14 @@
-# CGAP - Documentation AI Assistant
+# CGAP - Browser Extension MVP (1-Month Sprint)
 
-## Project Roadmap & TODO
+## 🎯 Mission
+**Browser extension that captures page context (DOM + screenshot) and provides AI-guided setup steps with optional auto-click.**
 
-### Phase 0: Foundation ✓ (In Progress)
-Core Q&A, hybrid search (pgvector+Meili), deflection endpoint, basic ingest (URL/docs), seed tooling, integration tests, docs.
+Open any SaaS → click CGAP → ask question → get step-by-step guidance grounded in your docs + videos.
+
+## Timeline: 4 Weeks to MVP Launch
+
+### Phase 0: Browser Extension MVP ✓ (4-Week Sprint)
+Week 1: Sources + Media DB | Week 2: Media Ingest | Week 3: Extension Endpoint | Week 4: Extension UI
 
 #### Completed ✓
 - [x] Ingest job status API
@@ -29,12 +34,64 @@ Core Q&A, hybrid search (pgvector+Meili), deflection endpoint, basic ingest (URL
   - Checks DB and Redis connectivity
   - Ready for ECS, Kubernetes, and orchestration platforms
 
-#### Pending
-- [ ] Persist sources and linkage
-  - Add `sources` table with metadata (url, crawl_mode, last_crawled_at, etc.)
-  - Add `document_sources` mapping table
-  - Record origin metadata for documents/chunks
-  - Enable incremental re-crawls and provenance tracking
+#### Week 1: Sources + Media DB (Mon-Fri)
+- [ ] Database migrations
+  - [ ] Create `sources` table (id, project_id, type, url, crawl_mode, last_crawled_at, status)
+  - [ ] Create `document_sources` mapping table (document_id, source_id)
+  - [ ] Create `media_items` table (id, type: image|video|youtube, source_url)
+  - [ ] Create `extracted_text` table (media_id, text, source_type: ocr|transcript, confidence_score)
+  - [ ] Run migrations, verify tables exist
+- [ ] Update ingest handler to record `source_id` for each document
+- [ ] Test: POST /v1/ingest → documents tagged with source
+
+#### Week 2: Media Ingest Handler (Mon-Fri)
+- [ ] OCR Integration (Google Vision)
+  - [ ] Detect images in ingest payload → call Google Vision API
+  - [ ] Store extracted text in `extracted_text` table
+  - [ ] Error handling: skip image, log
+- [ ] YouTube Transcript Fetching
+  - [ ] Detect YouTube URLs → fetch captions via YouTube API
+  - [ ] Store transcripts with timestamps in `extracted_text`
+- [ ] Worker: `handleMediaIngest()` function
+  - [ ] Process media_items in parallel (semaphore)
+  - [ ] Update job progress: processed/total
+- [ ] Test: Ingest image + YouTube URL → extracted text appears
+
+#### Week 3: Extension Endpoint + DOM Parsing (Mon-Fri)
+- [ ] API Types
+  - [ ] `ExtensionChatRequest` {project_id, dom, screenshot, url, question}
+  - [ ] `ExtensionChatResponse` {guidance, steps, next_actions}
+  - [ ] `DOMEntity` {selector, type, text}
+- [ ] DOM Parser
+  - [ ] Parse DOM JSON → extract buttons, inputs, links
+  - [ ] Generate CSS selectors for each element
+- [ ] Handler: `POST /v1/extension/chat`
+  - [ ] Extract DOM entities + retrieve relevant docs
+  - [ ] LLM: "User on [page], asking [q]. Elements: [entities]. Guidance:"
+  - [ ] Return: {guidance, steps: [{description, selector, action}]}
+- [ ] Test: Send Mixpanel DOM → get steps with selectors
+
+#### Week 4: Browser Extension (Mon-Fri)
+- [ ] Extension code (TypeScript + React)
+  - [ ] manifest.json (Chrome v3)
+  - [ ] popup/App.tsx (input + results)
+  - [ ] content-script.ts (captureDOM + screenshot)
+  - [ ] utils/api.ts, storage.ts
+- [ ] Core features
+  - [ ] Capture DOM → JSON
+  - [ ] Take screenshot (html2canvas)
+  - [ ] Send to /v1/extension/chat
+  - [ ] Display guidance in popup
+- [ ] Testing
+  - [ ] Load extension on Chrome (dev mode)
+  - [ ] Test on Mixpanel + Stripe dashboards
+  - [ ] Demo: Ask question → get steps
+
+#### MVP Done
+- [ ] Extension loads in Chrome
+- [ ] Captures DOM + screenshot
+- [ ] API returns guidance
+- [ ] Demo works end-to-end
 - [ ] Media ingestion (OCR/transcripts)
   - **Image OCR Processing**
     - Optical Character Recognition (OCR) for images

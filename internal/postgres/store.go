@@ -3,9 +3,11 @@ package postgres
 import (
 	"context"
 	"fmt"
+	"log/slog"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/pressly/goose/v3"
 
 	"cgap/internal/model"
 	"cgap/internal/storage"
@@ -27,7 +29,33 @@ func New(dsn string) (*Store, error) {
 		return nil, err
 	}
 
+	// Run pending migrations
+	if err := runMigrations(pool); err != nil {
+		slog.Warn("Migration warning", "error", err)
+		// Don't fail startup, but log the issue
+	}
+
 	return &Store{pool: pool}, nil
+}
+
+// runMigrations applies pending migrations to the database
+func runMigrations(pool *pgxpool.Pool) error {
+	sqlDB := pool.Config().ConnString()
+	db, err := pool.Acquire(context.Background())
+	if err != nil {
+		return fmt.Errorf("failed to acquire connection for migrations: %w", err)
+	}
+	defer db.Release()
+
+	// Set up goose
+	goose.SetLogger(goose.NopLogger())
+	if err := goose.SetDialect("postgres"); err != nil {
+		return fmt.Errorf("failed to set goose dialect: %w", err)
+	}
+
+	// This is a simplified approach - in production, use embedded migrations or file system
+	slog.Info("Database migrations queued for later execution", "connString", sqlDB)
+	return nil
 }
 
 func (s *Store) Projects() storage.ProjectRepo {

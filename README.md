@@ -1,93 +1,75 @@
-# cgap: Open-Source SaaS Setup Copilot
+# CGAP: AI Browser Extension for SaaS Setup
 
-cgap is an open-source **SaaS setup copilot** that turns “what I’m trying to do” into **step-by-step guidance inside your product UI**—grounded in your docs, screenshots, and walkthrough videos. It also deflects repetitive support questions and highlights where users get stuck.
+**CGAP** is a browser extension that provides AI-guided setup assistance inside any SaaS dashboard.
 
+**How it works:**
+1. Install CGAP extension on Chrome/Firefox
+2. Open any SaaS (Mixpanel, Stripe, HubSpot, etc.)
+3. Click CGAP icon → ask "How do I create a campaign?"
+4. Get step-by-step guidance with UI element selectors
+5. Optional: Auto-click each step (with confirmation)
 
-## What you get
-- **Do mode**: goal → clickable steps + checklist (create campaigns, reports, tracking plans, etc.)
-- **Explain mode**: plain-English explanations of screens/metrics + “where to go next”
-- **Evidence-first answers**: citations to docs + timestamps for videos (when available)
-- **Ingestion pipeline**: websites/docs/PDFs + images (OCR) + tutorials (YouTube transcripts / video ASR)
-- **Enablement analytics**: clusters recurring “stuck” questions into actionable fixes (docs/UI/playbooks)
-- **Optional Autopilot (roadmap)**: guardrailed browser automation for repeatable workflows
+**Built with:** Go API + Browser Extension (TypeScript/React) + PostgreSQL + Meilisearch + Gemini/OpenAI LLM
 
-## Quick Start
+## Quick Start (MVP - 4 Weeks)
 
-### Prerequisites
-- Docker & Docker Compose
-- Go 1.21+ (for local development)
-- PostgreSQL 16+ (optional, Docker includes it)
-
-### Local Setup (Docker Compose)
-
-1. Clone the repository:
+### For Backend Developers (API + Worker)
 ```bash
-git clone https://github.com/yourusername/cgap.git
-cd cgap
+# Prerequisites
+docker-compose up  # Start: Postgres, Meilisearch, Redis
+
+# Build & run
+go run cmd/api/main.go      # API on :8080
+go run cmd/worker/main.go   # Worker on :8081
+
+# Test ingest
+curl -X POST http://localhost:8080/v1/ingest \
+  -H "Content-Type: application/json" \
+  -d '{
+    "project_id": "demo-proj",
+    "source": {
+      "type": "crawl",
+      "start_url": "https://docs.example.com",
+      "crawl": {"scope": "prefix"}
+    }
+  }'
 ```
 
-2. Start the full stack:
+### For Extension Developers (Chrome Extension)
 ```bash
-docker-compose up
+# After backend is running
+
+# Install dependencies
+cd extension
+npm install
+
+# Build extension
+npm run build
+
+# Load in Chrome:
+# 1. Go to chrome://extensions/
+# 2. Enable "Developer mode" (top-right)
+# 3. Click "Load unpacked"
+# 4. Select extension/dist/ folder
+
+# Test on any SaaS:
+# 1. Open Mixpanel or Stripe dashboard
+# 2. Click CGAP icon
+# 3. Ask "How do I create a dashboard?"
 ```
 
-This starts:
-- **PostgreSQL 16** (localhost:5432) - Metadata, conversations, analytics
-- **Meilisearch 1.8** (localhost:7700) - Full-text search
-- **Redis 7** (localhost:6379) - Job queue and caching
-- **cgap API** (localhost:8080) - REST API server
-- **cgap Worker** (background) - Async ingestion and gap detection
-
-3. Check health:
+### Environment Variables
 ```bash
-curl http://localhost:8080/health
-# {"status":"ok"}
-```
-
-### Local Development Setup
-
-1. Install Go dependencies:
-```bash
-go mod download
-```
-
-2. Set environment variables (.env):
-```bash
-# Database
-export DATABASE_URL="postgres://postgres:postgres@localhost:5432/cgap?sslmode=disable"
-export POSTGRES_PASSWORD=postgres
-
-# Meilisearch
-export MEILI_URL=http://localhost:7700
-export MEILI_API_KEY=masterKey
-
-# Redis
-export REDIS_URL=redis://localhost:6379
-
-# LLM
-export LLM_PROVIDER=openai  # or anthropic
-export LLM_API_KEY=sk-...
-export LLM_MODEL=gpt-4-turbo
-
-# API
-export PORT=8080
-export WORKER_PORT=8081
-```
-
-3. Run migrations:
-```bash
-brew install goose  # macOS
-goose -dir migrations postgres "$DATABASE_URL" up
-```
-
-4. Run the API locally:
-```bash
-go run cmd/api/main.go
-```
-
-5. Run the worker locally:
-```bash
-go run cmd/worker/main.go
+# .env file
+DATABASE_URL=postgres://cgap:cgap@localhost:5432/cgap
+REDIS_URL=redis://localhost:6379
+MEILISEARCH_URL=http://localhost:7700
+LLM_PROVIDER=google
+GEMINI_API_KEY=your-key
+EMBEDDING_PROVIDER=google
+EMBEDDING_MODEL=gemini-embedding-001
+PORT=8080
+HEALTH_PORT=8081
 ```
 
 ## Architecture
