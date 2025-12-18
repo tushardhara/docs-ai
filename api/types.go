@@ -351,6 +351,45 @@ type MediaProcessResponse struct {
 	ExtractionStatus string                 `json:"extraction_status"` // "success", "partial", "failed"
 }
 
+// ===== Browser Extension API Types =====
+
+// DOMEntity represents an interactive element on the page
+type DOMEntity struct {
+	Selector string `json:"selector"` // CSS selector (e.g., ".btn-dashboard")
+	Type     string `json:"type"`     // "button", "input", "link", "select", etc.
+	Text     string `json:"text"`     // Visible text or label
+	ID       string `json:"id,omitempty"`
+	Class    string `json:"class,omitempty"`
+}
+
+// ExtensionChatRequest is the payload from browser extension
+type ExtensionChatRequest struct {
+	ProjectID  string      `json:"project_id"`
+	URL        string      `json:"url"`                  // Current page URL
+	Question   string      `json:"question"`             // User's question
+	DOM        []DOMEntity `json:"dom"`                  // Parsed DOM entities
+	Screenshot string      `json:"screenshot,omitempty"` // Base64 image (optional)
+}
+
+// GuidanceStep represents a single action step
+type GuidanceStep struct {
+	StepNumber  int     `json:"step_number"`
+	Description string  `json:"description"`
+	Selector    string  `json:"selector,omitempty"`   // CSS selector for this step
+	Action      string  `json:"action,omitempty"`     // "click", "type", "select", etc.
+	Value       string  `json:"value,omitempty"`      // Value to type/select
+	Confidence  float32 `json:"confidence,omitempty"` // 0-1 confidence in this step
+}
+
+// ExtensionChatResponse contains guidance for the user
+type ExtensionChatResponse struct {
+	Guidance    string         `json:"guidance"`               // Natural language explanation
+	Steps       []GuidanceStep `json:"steps"`                  // Actionable steps with selectors
+	Confidence  float32        `json:"confidence"`             // Overall confidence (0-1)
+	Sources     []Citation     `json:"sources"`                // Supporting documentation
+	NextActions []string       `json:"next_actions,omitempty"` // Suggested follow-ups
+}
+
 // Services container holds all service implementations for dependency injection
 type Services struct {
 	Chat      ChatService

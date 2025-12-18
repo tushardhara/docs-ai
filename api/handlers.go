@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 	"time"
 
 	"os"
@@ -472,6 +473,279 @@ func MediaProcessHandler(c fiber.Ctx) error {
 	return c.Status(fiber.StatusOK).JSON(response)
 }
 
+// ExtensionChatHandler handles POST /v1/extension/chat - browser extension endpoint
+func ExtensionChatHandler(c fiber.Ctx) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var req ExtensionChatRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	// Validate required fields
+	if req.ProjectID == "" || req.Question == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{
+			"error": "project_id and question are required",
+		})
+	}
+
+	// Build DOM context for LLM
+	domContext := buildDOMContextString(req.DOM, 20)
+
+	// Perform hybrid search to find relevant docs
+	var searchResults []SearchHit
+	if services != nil && services.Search != nil {
+		results, err := services.Search.Search(ctx, req.ProjectID, req.Question, 5, nil)
+		if err != nil {
+			slog.Warn("Search failed in extension chat", "error", err)
+		} else {
+			searchResults = results
+		}
+	}
+
+	// Build context from search results
+	docsContext := buildDocsContext(searchResults)
+
+	// Generate LLM prompt
+	prompt := buildExtensionPrompt(req.URL, req.Question, domContext, docsContext)
+
+	// Call LLM
+	var guidance string
+	var steps []GuidanceStep
+	var confidence float32 = 0.8
+
+	if services != nil && services.Chat != nil {
+		chatReq := ChatRequest{
+			ProjectID: req.ProjectID,
+			Query:     prompt,
+		}
+
+		chatResp, err := services.Chat.Chat(ctx, chatReq)
+		if err != nil {
+			slog.Error("LLM call failed in extension chat", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+				"error": "Failed to generate guidance",
+			})
+		}
+
+		guidance = chatResp.Answer
+		confidence = chatResp.Confidence
+
+		// Parse steps from LLM response
+		steps = parseStepsFromGuidance(guidance, req.DOM)
+	} else {
+		// Fallback mock response
+		guidance = fmt.Sprintf("To %s on %s:\n\n1. Look for the main navigation menu\n2. Find the relevant section or button\n3. Click to proceed\n\nNote: This is a mock response. Configure LLM service for real guidance.",
+			req.Question, req.URL)
+		steps = []GuidanceStep{
+			{StepNumber: 1, Description: "Locate main navigation", Confidence: 0.7},
+			{StepNumber: 2, Description: "Find relevant section", Confidence: 0.6},
+			{StepNumber: 3, Description: "Click to proceed", Confidence: 0.5},
+		}
+	}
+
+	// Extract citations from search results
+	var citations []Citation
+	for _, hit := range searchResults {
+		citations = append(citations, Citation{
+			ChunkID: hit.ChunkID,
+			Quote:   hit.Text,
+			Score:   hit.Confidence,
+		})
+	}
+
+	response := ExtensionChatResponse{
+		Guidance:    guidance,
+		Steps:       steps,
+		Confidence:  confidence,
+		Sources:     citations,
+		NextActions: generateNextActions(req.Question),
+	}
+
+	return c.Status(fiber.StatusOK).JSON(response)
+}
+
+// Helper functions for ExtensionChatHandler
+
+func buildDOMContextString(entities []DOMEntity, maxElements int) string {
+	if len(entities) == 0 {
+		return "No interactive elements detected on the page."
+	}
+
+	interactive := filterInteractiveElements(entities)
+	if len(interactive) > maxElements {
+		interactive = interactive[:maxElements]
+	}
+
+	var parts []string
+	parts = append(parts, fmt.Sprintf("Page has %d interactive elements:", len(interactive)))
+
+	for i, entity := range interactive {
+		desc := fmt.Sprintf("%d. %s", i+1, entity.Type)
+		if entity.Text != "" {
+			text := entity.Text
+			if len(text) > 50 {
+				text = text[:50] + "..."
+			}
+			desc += fmt.Sprintf(" \"%s\"", text)
+		}
+		if entity.Selector != "" {
+			desc += fmt.Sprintf(" (%s)", entity.Selector)
+		}
+		parts = append(parts, desc)
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+func filterInteractiveElements(entities []DOMEntity) []DOMEntity {
+	interactive := map[string]bool{
+		"button": true, "input": true, "select": true, "textarea": true,
+		"a": true, "link": true,
+	}
+
+	var result []DOMEntity
+	for _, entity := range entities {
+		if interactive[strings.ToLower(entity.Type)] {
+			result = append(result, entity)
+		}
+	}
+	return result
+}
+
+func buildDocsContext(results []SearchHit) string {
+	if len(results) == 0 {
+		return "No relevant documentation found."
+	}
+
+	var parts []string
+	parts = append(parts, "Relevant documentation:")
+
+	for i, hit := range results {
+		if i >= 3 {
+			break
+		}
+		content := hit.Text
+		if len(content) > 200 {
+			content = content[:200] + "..."
+		}
+		parts = append(parts, fmt.Sprintf("\n%d. Document %s\n   %s", i+1, hit.DocumentID, content))
+	}
+
+	return strings.Join(parts, "\n")
+}
+
+func buildExtensionPrompt(url, question, domContext, docsContext string) string {
+	return fmt.Sprintf(`You are helping a user navigate a web application.
+
+Current Page: %s
+User Question: %s
+
+Available Elements on Page:
+%s
+
+Relevant Documentation:
+%s
+
+Provide clear, step-by-step guidance to answer the user's question. 
+For each step, specify which element to interact with using CSS selectors when possible.
+Format your response as numbered steps.`, url, question, domContext, docsContext)
+}
+
+func parseStepsFromGuidance(guidance string, domEntities []DOMEntity) []GuidanceStep {
+	var steps []GuidanceStep
+
+	// Simple parsing: look for numbered lines
+	lines := strings.Split(guidance, "\n")
+	stepNum := 1
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+
+		// Check if line starts with a number
+		if len(line) > 2 && (line[0] >= '1' && line[0] <= '9') && (line[1] == '.' || line[1] == ')') {
+			description := strings.TrimSpace(line[2:])
+
+			// Try to find matching selector from DOM
+			selector := findSelectorForStep(description, domEntities)
+			action := inferAction(description)
+
+			steps = append(steps, GuidanceStep{
+				StepNumber:  stepNum,
+				Description: description,
+				Selector:    selector,
+				Action:      action,
+				Confidence:  0.75,
+			})
+			stepNum++
+		}
+	}
+
+	return steps
+}
+
+func findSelectorForStep(description string, entities []DOMEntity) string {
+	descLower := strings.ToLower(description)
+
+	// Look for text matches in description
+	for _, entity := range entities {
+		if entity.Text != "" && strings.Contains(descLower, strings.ToLower(entity.Text)) {
+			if entity.Selector != "" {
+				return entity.Selector
+			}
+		}
+	}
+
+	return ""
+}
+
+func inferAction(description string) string {
+	descLower := strings.ToLower(description)
+
+	if strings.Contains(descLower, "click") {
+		return "click"
+	}
+	if strings.Contains(descLower, "type") || strings.Contains(descLower, "enter") {
+		return "type"
+	}
+	if strings.Contains(descLower, "select") || strings.Contains(descLower, "choose") {
+		return "select"
+	}
+
+	return "navigate"
+}
+
+func generateNextActions(question string) []string {
+	// Simple heuristics for suggesting next actions
+	questionLower := strings.ToLower(question)
+
+	if strings.Contains(questionLower, "create") || strings.Contains(questionLower, "add") {
+		return []string{
+			"How do I edit this after creating it?",
+			"Can I duplicate this?",
+			"How do I delete this if I make a mistake?",
+		}
+	}
+
+	if strings.Contains(questionLower, "dashboard") {
+		return []string{
+			"How do I customize the dashboard?",
+			"Can I share this dashboard?",
+			"How do I export dashboard data?",
+		}
+	}
+
+	return []string{
+		"What else can I do here?",
+		"How do I save my changes?",
+		"Where can I find more help?",
+	}
+}
+
 // IngestHandler handles POST /v1/ingest
 func IngestHandler(c fiber.Ctx) error {
 	var req IngestRequest
@@ -881,6 +1155,9 @@ func RegisterRoutesWithServices(app *fiber.App, svc *Services, deps *HealthDeps)
 	app.Post("/v1/media/ocr", OCRHandler)
 	app.Post("/v1/media/youtube", YouTubeHandler)
 	app.Post("/v1/media/video", VideoHandler)
+
+	// Browser Extension
+	app.Post("/v1/extension/chat", ExtensionChatHandler)
 
 	// Ingest
 	app.Post("/v1/ingest", IngestHandler)
