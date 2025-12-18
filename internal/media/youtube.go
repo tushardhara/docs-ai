@@ -51,7 +51,7 @@ func (y *YouTubeVideoProcessor) GetTranscript(ctx context.Context, videoID strin
 	defer os.Remove(videoPath)
 
 	// Extract frames
-	framePaths, err := y.extractFrames(ctx, videoPath, duration)
+	framePaths, err := y.extractFrames(ctx, videoPath)
 	if err != nil {
 		y.logger.Error("Failed to extract frames", "error", err)
 		return nil, fmt.Errorf("%w: failed to extract frames: %v", ErrExtractionFailed, err)
@@ -128,7 +128,7 @@ func (y *YouTubeVideoProcessor) downloadVideo(ctx context.Context, videoID strin
 }
 
 // extractFrames extracts key frames from video using ffmpeg
-func (y *YouTubeVideoProcessor) extractFrames(ctx context.Context, videoPath string, duration int) ([]string, error) {
+func (y *YouTubeVideoProcessor) extractFrames(ctx context.Context, videoPath string) ([]string, error) {
 	frameDir := filepath.Join(y.tempDir, fmt.Sprintf("frames_%d", os.Getpid()))
 	if err := os.MkdirAll(frameDir, 0755); err != nil {
 		return nil, fmt.Errorf("failed to create frame directory: %w", err)
@@ -161,8 +161,8 @@ func (y *YouTubeVideoProcessor) extractFrames(ctx context.Context, videoPath str
 }
 
 // getVideoDuration gets video duration in seconds using ffprobe
-func (y *YouTubeVideoProcessor) getVideoDuration(ctx context.Context, videoPath string) (int, error) {
-	cmd := exec.CommandContext(ctx, "ffprobe",
+func (y *YouTubeVideoProcessor) getVideoDuration(_ context.Context, videoPath string) (int, error) {
+	cmd := exec.Command("ffprobe",
 		"-v", "error",
 		"-show_entries", "format=duration",
 		"-of", "default=noprint_wrappers=1:nokey=1:noprint_wrappers=1",
@@ -183,7 +183,7 @@ func (y *YouTubeVideoProcessor) getVideoDuration(ctx context.Context, videoPath 
 }
 
 // ExtractVideoIDFromURL extracts the video ID from a YouTube URL
-func (y *YouTubeVideoProcessor) ExtractVideoIDFromURL(url string) (string, error) {
+func (y *YouTubeVideoProcessor) ExtractVideoIDFromURL(youtubeURL string) (string, error) {
 	patterns := []string{
 		`(?:youtube\.com\/watch\?v=|youtu\.be\/)([^&\n?#]+)`,
 		`youtube\.com\/embed\/([^&\n?#]+)`,
@@ -192,11 +192,11 @@ func (y *YouTubeVideoProcessor) ExtractVideoIDFromURL(url string) (string, error
 
 	for _, pattern := range patterns {
 		re := regexp.MustCompile(pattern)
-		matches := re.FindStringSubmatch(url)
+		matches := re.FindStringSubmatch(youtubeURL)
 		if len(matches) > 1 {
 			return matches[1], nil
 		}
 	}
 
-	return "", fmt.Errorf("%w: could not extract video ID from %s", ErrInvalidURL, url)
+	return "", fmt.Errorf("%w: could not extract video ID from %s", ErrInvalidURL, youtubeURL)
 }

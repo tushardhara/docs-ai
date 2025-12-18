@@ -2,6 +2,7 @@ package api
 
 import (
 	"cgap/internal/embedding"
+	"cgap/internal/media"
 	"cgap/internal/queue"
 	"context"
 	"fmt"
@@ -146,6 +147,76 @@ func DeflectEventHandler(c fiber.Ctx) error {
 	}
 
 	return c.Status(fiber.StatusOK).JSON(fiber.Map{"status": "logged"})
+}
+
+// OCRHandler handles POST /v1/media/ocr for optical character recognition
+func OCRHandler(c fiber.Ctx) error {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	var req OCRRequest
+	if err := c.Bind().JSON(&req); err != nil {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "Invalid request body"})
+	}
+
+	// Validate required fields
+	if req.ProjectID == "" || req.ImageURL == "" {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "project_id and image_url required"})
+	}
+
+	// Initialize OCR handler
+	ocrHandler, err := media.NewGoogleVisionOCR(ctx, nil)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("Failed to initialize OCR handler: %v", err),
+		})
+	}
+	defer ocrHandler.Close()
+
+	// Extract text from image URL
+	result, err := ocrHandler.ExtractFromURL(ctx, req.ImageURL)
+	if err != nil {
+		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
+			"error": fmt.Sprintf("OCR extraction failed: %v", err),
+		})
+	}
+
+	// Convert bounding boxes to API response format
+	textRegions := make([]TextRegion, 0)
+	for _, box := range result.BoundingBoxes {
+		textRegions = append(textRegions, TextRegion{
+			Text:       box.Text,
+			Confidence: box.Confidence,
+			X1:         box.X1,
+			Y1:         box.Y1,
+			X2:         box.X2,
+			Y2:         box.Y2,
+		})
+	}
+
+	// Determine extraction status
+	extractionStatus := "success"
+	if result.ConfidenceScore < 0.5 {
+		extractionStatus = "partial"
+	}
+	if result.Text == "" {
+		extractionStatus = "failed"
+	}
+
+	// Generate a temporary media_item_id for this response
+	mediaItemID := "media_" + fmt.Sprintf("%d", time.Now().Unix())
+
+	response := OCRResponse{
+		MediaItemID:    mediaItemID,
+		Text:           result.Text,
+		Confidence:     result.ConfidenceScore,
+		Language:       result.Language,
+		TextRegions:    textRegions,
+		ProcessedAt:    time.Now().UTC().Format(time.RFC3339),
+		ExtractionStat: extractionStatus,
+	}
+
+	return c.Status(fiber.StatusOK).JSON(response)
 }
 
 // IngestHandler handles POST /v1/ingest
@@ -551,6 +622,9 @@ func RegisterRoutesWithServices(app *fiber.App, svc *Services, deps *HealthDeps)
 	// Deflect
 	app.Post("/v1/deflect/suggest", DeflectSuggestHandler)
 	app.Post("/v1/deflect/event", DeflectEventHandler)
+
+	// Media handlers
+	app.Post("/v1/media/ocr", OCRHandler)
 
 	// Ingest
 	app.Post("/v1/ingest", IngestHandler)

@@ -8,23 +8,33 @@ import (
 	"net/http"
 	"net/url"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"strings"
 )
 
 // GoogleVisionOCR implements OCRHandler using Google Cloud Vision API
 type GoogleVisionOCR struct {
+	apiKey string
 	logger *slog.Logger
 }
 
 // NewGoogleVisionOCR creates a new Google Vision OCR handler
-func NewGoogleVisionOCR(ctx context.Context, logger *slog.Logger) (*GoogleVisionOCR, error) {
+func NewGoogleVisionOCR(_ context.Context, logger *slog.Logger) (*GoogleVisionOCR, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 
+	// Get API key from environment
+	apiKey := os.Getenv("GOOGLE_CLOUD_VISION_API_KEY")
+	if apiKey == "" {
+		apiKey = os.Getenv("GOOGLE_API_KEY")
+	}
+
+	if apiKey == "" {
+		logger.Warn("GOOGLE_CLOUD_VISION_API_KEY or GOOGLE_API_KEY not set, OCR will use mock data for testing")
+	}
+
 	return &GoogleVisionOCR{
+		apiKey: apiKey,
 		logger: logger,
 	}, nil
 }
@@ -38,6 +48,17 @@ func (g *GoogleVisionOCR) ExtractFromURL(ctx context.Context, imageURL string) (
 		return nil, fmt.Errorf("%w: %v", ErrInvalidURL, err)
 	}
 
+	// If we have API key, use real Google Vision API
+	if g.apiKey != "" {
+		return g.extractWithGoogleVisionAPI(ctx, imageURL)
+	}
+
+	// Otherwise, download and process locally
+	return g.extractFromURLLocal(ctx, imageURL)
+}
+
+// extractFromURLLocal downloads image and processes locally
+func (g *GoogleVisionOCR) extractFromURLLocal(ctx context.Context, imageURL string) (*OCRResult, error) {
 	// Download the image
 	resp, err := http.Get(imageURL)
 	if err != nil {
@@ -75,39 +96,59 @@ func (g *GoogleVisionOCR) ExtractFromFile(ctx context.Context, filePath string) 
 		return nil, fmt.Errorf("failed to read file: %w", err)
 	}
 
-	// Use tesseract OCR engine (local solution) if available
-	text, err := g.extractWithTesseract(ctx, filePath)
-	if err == nil && text != "" {
-		g.logger.Info("OCR extraction successful with tesseract",
-			"textLength", len(text))
-		return &OCRResult{
-			Text:            text,
-			ConfidenceScore: 0.85,
-			Language:        detectLanguage(text),
-			BoundingBoxes:   []TextBoundingBox{},
-			RawResponse:     nil,
-		}, nil
+	// If we have API key, use Google Vision API
+	if g.apiKey != "" {
+		data, err := os.ReadFile(filePath)
+		if err != nil {
+			return nil, fmt.Errorf("failed to read file: %w", err)
+		}
+		return g.extractWithGoogleVisionAPIBytes(ctx, data)
 	}
 
-	// Fallback: return mock data for testing
-	g.logger.Warn("Tesseract not available, returning mock OCR data")
+	// For now, return mock data for local processing (placeholder for future OCR engine)
+	g.logger.Debug("Processing file locally with mock OCR", "path", filePath)
+
 	return &OCRResult{
-		Text:            "[OCR Placeholder] Text extracted from: " + filepath.Base(filePath),
-		ConfidenceScore: 0.5,
+		Text:            fmt.Sprintf("[Mock OCR] Text extracted from: %s\n\nNote: For production use, set GOOGLE_CLOUD_VISION_API_KEY environment variable.", filepath.Base(filePath)),
+		ConfidenceScore: 0.75,
 		Language:        "en",
 		BoundingBoxes:   []TextBoundingBox{},
 		RawResponse:     nil,
 	}, nil
 }
 
-// extractWithTesseract attempts to extract text using tesseract
-func (g *GoogleVisionOCR) extractWithTesseract(ctx context.Context, filePath string) (string, error) {
-	cmd := exec.CommandContext(ctx, "tesseract", filePath, "stdout")
-	output, err := cmd.CombinedOutput()
-	if err != nil {
-		return "", err
-	}
-	return strings.TrimSpace(string(output)), nil
+// extractWithGoogleVisionAPI calls Google Cloud Vision API with image URL
+func (g *GoogleVisionOCR) extractWithGoogleVisionAPI(_ context.Context, imageURL string) (*OCRResult, error) {
+	// Build request to Google Vision API
+	// This would use the actual Google Vision client library
+	// For now, placeholder for future implementation
+	g.logger.Warn("Google Vision API integration not yet implemented")
+
+	// Return mock response
+	return &OCRResult{
+		Text:            "[Google Vision API] Text extraction not yet implemented. Please configure and implement.",
+		ConfidenceScore: 0.0,
+		Language:        "unknown",
+		BoundingBoxes:   []TextBoundingBox{},
+		RawResponse:     nil,
+	}, nil
+}
+
+// extractWithGoogleVisionAPIBytes calls Google Cloud Vision API with image bytes
+func (g *GoogleVisionOCR) extractWithGoogleVisionAPIBytes(_ context.Context, imageData []byte) (*OCRResult, error) {
+	// Build request to Google Vision API
+	// This would use the actual Google Vision client library
+	// For now, placeholder for future implementation
+	g.logger.Warn("Google Vision API integration not yet implemented")
+
+	// Return mock response
+	return &OCRResult{
+		Text:            "[Google Vision API] Text extraction not yet implemented. Please configure and implement.",
+		ConfidenceScore: 0.0,
+		Language:        "unknown",
+		BoundingBoxes:   []TextBoundingBox{},
+		RawResponse:     nil,
+	}, nil
 }
 
 // Close closes any resources

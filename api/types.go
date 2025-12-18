@@ -262,6 +262,32 @@ type GapDetailResponse struct {
 	Examples []GapClusterExample `json:"examples"`
 }
 
+// OCR Request/Response types
+type OCRRequest struct {
+	ProjectID string `json:"project_id"`
+	SourceID  string `json:"source_id"`
+	ImageURL  string `json:"image_url"`
+}
+
+type TextRegion struct {
+	Text       string  `json:"text"`
+	Confidence float64 `json:"confidence"`
+	X1         float32 `json:"x1"`
+	Y1         float32 `json:"y1"`
+	X2         float32 `json:"x2"`
+	Y2         float32 `json:"y2"`
+}
+
+type OCRResponse struct {
+	MediaItemID    string       `json:"media_item_id"`
+	Text           string       `json:"text"`
+	Confidence     float64      `json:"confidence"`
+	Language       string       `json:"language"`
+	TextRegions    []TextRegion `json:"text_regions,omitempty"`
+	ProcessedAt    string       `json:"processed_at"`
+	ExtractionStat string       `json:"extraction_status"` // "success", "partial", "failed"
+}
+
 // Services container holds all service implementations for dependency injection
 type Services struct {
 	Chat      ChatService
