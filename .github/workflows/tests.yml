@@ -54,9 +54,10 @@ jobs:
     - name: Run tests with coverage
       run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
-    - name: Upload coverage to Codecov
-      uses: codecov/codecov-action@v3
+    - name: Upload coverage reports to Codecov
+      uses: codecov/codecov-action@v5
       with:
+        token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage.out
         flags: unittests
         name: codecov-umbrella
@@ -73,7 +74,9 @@ jobs:
     - name: Run linter
       uses: golangci/golangci-lint-action@v6
       with:
-        version: latest
+        # Build golangci-lint from source using the runner's Go (1.25)
+        install-mode: goinstall
+        version: v1.64.8
         args: --timeout=5m
 
   integration-tests:
