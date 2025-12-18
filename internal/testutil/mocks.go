@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"context"
+	"errors"
 	"sync"
 	"time"
 
@@ -9,6 +10,9 @@ import (
 
 	"github.com/redis/go-redis/v9"
 )
+
+// Test error for mocking failures
+var ErrTestError = errors.New("test error")
 
 // MockLLM provides a mock LLM implementation for testing
 type MockLLM struct {
