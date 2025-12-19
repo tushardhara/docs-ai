@@ -145,11 +145,44 @@ Media flows: Ingest → `media_items` table → Orchestrator → Handler → `ex
 ## Sprint Context (Week 1-4 MVP)
 Currently in **4-week sprint** focused on browser extension MVP:
 - **Week 1** ✅ - Database foundation (media_items, extracted_text tables)
-- **Week 2** ⏳ - Media handlers (OCR, YouTube, video)
-- **Week 3** - Extension chat endpoint
+- **Week 2** ✅ - Media handlers (OCR, YouTube, video)
+- **Week 3** ⏳ - Extension chat endpoint (95% complete)
 - **Week 4** - Chrome extension UI
 
 See `docs/WEEK_*_*.md` for detailed sprint plans and status.
+
+## GitHub Workflow (MANDATORY)
+
+### Branch Protection Rules
+**ALL changes MUST go through Pull Requests - NO direct pushes to `main`**
+
+### Development Workflow
+1. **Pick a GitHub Issue**: Check https://github.com/tushardhara/docs-ai/issues
+2. **Create Feature Branch**: `git checkout -b feature/issue-N-description`
+3. **Make Changes**: Implement the feature/fix
+4. **Test Locally**: Ensure `go build ./...` and `go test ./...` pass
+5. **Commit with Convention**: `git commit -m "feat: description (#N)"` or `fix:`, `docs:`, `test:`
+6. **Push Branch**: `git push origin feature/issue-N-description`
+7. **Create PR**: Link to issue, add description, request review
+8. **Get Approval**: Wait for review and approval
+9. **Merge**: Squash and merge to main
+10. **Close Issue**: Automatically closed via PR merge
+
+### Commit Message Convention
+```
+feat: Add DOM capture content script (#5)
+fix: Handle nil pointer in OCR handler (#7)
+docs: Update API endpoint documentation (#8)
+test: Add integration tests for video handler (#9)
+chore: Update dependencies (#10)
+```
+
+### PR Template
+When creating PRs, include:
+- **Related Issue**: Fixes #N
+- **Changes**: Brief description
+- **Testing**: How to test the changes
+- **Screenshots**: For UI changes
 
 ## External Dependencies
 - **Database**: PostgreSQL 16+ with pgvector extension
