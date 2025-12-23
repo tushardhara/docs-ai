@@ -83,7 +83,7 @@ The following are considered unacceptable and will not be tolerated:
 ### How to Report
 If you experience or witness unacceptable behavior:
 
-1. **Report to maintainers**: Email conduct@example.com
+1. **Report to maintainers**: Email tushardharaster@gmail.com
 2. **Be specific**: Include details, context, and screenshots if applicable
 3. **Stay safe**: Don't engage with the person if it feels unsafe
 
@@ -125,7 +125,7 @@ This Code of Conduct is adapted from:
 ## Questions?
 
 If you have questions about this Code of Conduct:
-- Email: conduct@example.com
+- Email: tushardharaster@gmail.com
 - Open an issue (for non-sensitive questions)
 - Review [Contributor Covenant FAQ](https://www.contributor-covenant.org/faq)
 

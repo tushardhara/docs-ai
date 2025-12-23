@@ -2,7 +2,7 @@
 
 ## Reporting a Vulnerability
 
-If you discover a security vulnerability in CGAP, please report it responsibly to **security@example.com** instead of using the public issue tracker.
+If you discover a security vulnerability in CGAP, please report it responsibly to **tushardharaster@gmail.com** instead of using the public issue tracker.
 
 ### What to Include
 When reporting a security issue, please provide:
@@ -130,7 +130,7 @@ For security-related questions (not vulnerabilities):
 - Refer to [OWASP Guide](https://owasp.org/)
 
 For urgent security issues:
-- Email: **security@example.com**
+- Email: **tushardharaster@gmail.com**
 - Response time: 24 hours
 
 ---

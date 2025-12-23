@@ -382,7 +382,7 @@ docs-ai/
 
 - Check [GitHub Discussions](https://github.com/tushardhara/docs-ai/discussions)
 - Review [README.md](README.md) and [docs/](docs/)
-- Email: dev@example.com
+- Email: tushardharaster@gmail.com
 - Open an issue with `question` label
 
 ---
