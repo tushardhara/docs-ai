@@ -34,49 +34,78 @@ Deliverable: Ingest images + YouTube transcripts
   - [ ] Update job progress
 - [ ] Test: `POST /v1/ingest` with image + YouTube URL → extracted text stored
 
-### Week 3: Extension Endpoint (Mon-Fri)
+### Week 3: Extension Endpoint (Mon-Fri) ✅ COMPLETE
 ```
 Deliverable: API endpoint for browser extension
 ```
-- [ ] API Types
-  - [ ] `ExtensionChatRequest` {project_id, dom, screenshot, url, question}
-  - [ ] `ExtensionChatResponse` {guidance, steps: [], next_actions: []}
-  - [ ] `DOMEntity` {selector, type, text}
-- [ ] DOM Parser
-  - [ ] Parse DOM JSON → extract buttons, inputs, links
-  - [ ] Generate CSS selectors
-- [ ] Handler: `POST /v1/extension/chat`
-  - [ ] Extract DOM entities
-  - [ ] Hybrid search: retrieve relevant docs
-  - [ ] LLM prompt: "User on [page], asking [q]. Elements: [entities]. Provide steps:"
-  - [ ] Return: {guidance, steps: [{description, selector}]}
-- [ ] Test: `curl POST /v1/extension/chat` with mock DOM → get steps
+- [x] API Types
+  - [x] `ExtensionChatRequest` {project_id, dom, screenshot, url, question}
+  - [x] `ExtensionChatResponse` {guidance, steps: [], next_actions: []}
+  - [x] `DOMEntity` {selector, type, text, id, class, aria_label}
+- [x] DOM Parser
+  - [x] Parse DOM JSON → extract buttons, inputs, links
+  - [x] Generate CSS selectors
+  - [x] Filter interactive elements
+- [x] Handler: `POST /v1/extension/chat`
+  - [x] Extract DOM entities
+  - [x] Hybrid search: retrieve relevant docs (pgvector + Meilisearch)
+  - [x] LLM integration: "User on [page], asking [q]. Elements: [entities]. Provide steps:"
+  - [x] Return: {guidance, steps: [{description, selector, confidence}], next_actions: [], sources: []}
+- [x] Test: `curl POST /v1/extension/chat` with mock DOM → get steps
+- [x] Code quality: `go build ./...` passes
+- [x] API registered and working
 
-### Week 4: Browser Extension UI (Mon-Fri)
+### Week 4: Browser Extension UI (Mon-Fri) ⏳ IN PROGRESS
 ```
 Deliverable: Working Chrome extension MVP
 ```
-- [ ] Create extension/ directory structure
+- [ ] Create extension/ directory structure (Issue #3)
   ```
   extension/
   ├─ manifest.json
+  ├─ package.json
+  ├─ tsconfig.json
+  ├─ webpack.config.js
   ├─ src/
-  │  ├─ popup/App.tsx
-  │  ├─ content/script.ts
-  │  └─ utils/api.ts
+  │  ├─ popup/
+  │  │  ├─ App.tsx
+  │  │  ├─ index.tsx
+  │  │  └─ index.html
+  │  ├─ content/
+  │  │  ├─ capture.ts
+  │  │  ├─ highlighter.ts
+  │  │  └─ types.ts
+  │  └─ utils/
+  │     ├─ api.ts
+  │     ├─ storage.ts
+  │     ├─ types.ts
+  │     └─ config.ts
   └─ dist/ (built)
   ```
-- [ ] manifest.json (Chrome v3)
-- [ ] Popup UI: input box + loading state + results display
-- [ ] Content script: captureDOM() + screenshot
-- [ ] Core flow:
-  1. Capture page DOM → JSON
-  2. Take screenshot (html2canvas)
-  3. Send to /v1/extension/chat
-  4. Display guidance in popup
-- [ ] Test on Mixpanel + Stripe dashboards
-- [ ] Load in Chrome (dev mode)
-
+## MVP Definition of Done
+- [x] Backend API complete and tested
+- [x] Media handlers (OCR, YouTube, Video) working
+- [x] Extension chat endpoint fully implemented
+- [ ] Extension loads in Chrome
+- [ ] Can capture DOM + screenshot from any SaaS
+- [ ] Extension sends data to API endpoint
+- [ ] Extension displays guidance steps
+- [ ] Demo script works end-to-end: Mixpanel → ask → get steps
+- [x] Code: `go build ./...` passes (backend)
+## Demo Script (Week 4 Friday Target)
+```
+1. Open Mixpanel in Chrome, log in
+2. Click CGAP extension icon
+3. Type: "How do I create a dashboard?"
+4. Click "Analyze Page" button
+5. See guidance:
+   - "Step 1: Click Dashboards in sidebar" (with selector: .nav-dashboards)
+   - "Step 2: Click New Dashboard" (with selector: .btn-new-dashboard)
+   - "Step 3: Enter dashboard name" (with selector: input#name)
+   - "Step 4: Click Save" (with selector: .btn-save)
+6. Hover over steps to highlight elements on page
+7. Click step to scroll to and highlight the element
+```
 ---
 
 ## MVP Definition of Done
