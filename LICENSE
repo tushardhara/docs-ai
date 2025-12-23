@@ -1,0 +1,21 @@
+GNU AFFERO GENERAL PUBLIC LICENSE
+Version 3, 19 November 2007
+
+Copyright (C) 2025 CGAP Contributors
+Copyright (C) 2007 Free Software Foundation, Inc. <https://fsf.org/>
+
+Everyone is permitted to copy and distribute verbatim copies of this license document, but changing it is not allowed.
+
+This program is free software: you can redistribute it and/or modify it under the terms of the GNU Affero General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version.
+
+This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+ADDITIONAL TERMS:
+
+* All content that resides under the "ee/" directory of this repository, if that directory exists, is licensed under a separate proprietary license defined in "ee/LICENSE".
+* If you modify the Program and make it available via a network server, you MUST make the complete source code of your modified version available under this license.
+* Commercial use is permitted under this license, but you must release all modifications under AGPL-3.0.
+
+For the complete AGPL-3.0 license text, see: https://www.gnu.org/licenses/agpl-3.0.txt
